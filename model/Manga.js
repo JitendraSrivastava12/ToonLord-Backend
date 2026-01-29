@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 const MangaSchema = new mongoose.Schema({
   title: { type: String, required: true },
   author: { type: String }, // Added to match your data
+  artist: { type: String },
   coverImage: { type: String, required: true },
   description: { type: String, required: true },
   

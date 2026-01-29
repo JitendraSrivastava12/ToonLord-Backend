@@ -30,7 +30,7 @@ const userSchema = new mongoose.Schema({
 
   /* --- Content Tracking --- */
   unlockedContent: [unlockedMangaSchema],
-  uploads: [{ type: mongoose.Schema.Types.ObjectId, ref: "Manga" }],
+  createdSeries: [{ type: mongoose.Schema.Types.ObjectId, ref: 'manga' }],
   history: [readingHistorySchema],
   bookmarks: [{ type: mongoose.Schema.Types.ObjectId, ref: "Manga" }]
 }, { timestamps: true });
