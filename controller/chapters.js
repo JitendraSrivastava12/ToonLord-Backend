@@ -2,18 +2,22 @@ import Chapter from '../model/Chapter.js';
 import Manga from '../model/Manga.js';
 import mongoose from 'mongoose';
 import { v2 as cloudinary } from 'cloudinary';
+import sharp from 'sharp';
 
 // 1. GET ALL CHAPTERS FOR A MANGA (For the list view)
 export const getChapterContent = async (req, res) => {
   try {
     const { mangaId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(mangaId)) {
-      return res.status(400).json({ error: "Invalid Manga ID format" });
+    // Support both ObjectId and legacy string IDs stored in older chapters
+    const orConditions = [];
+    if (mongoose.Types.ObjectId.isValid(mangaId)) {
+      orConditions.push({ mangaId: new mongoose.Types.ObjectId(mangaId) });
     }
+    orConditions.push({ mangaId: mangaId }); // string match fallback
 
-    const chapters = await Chapter.find({ mangaId: new mongoose.Types.ObjectId(mangaId) })
-      .select("_id chapterNumber title createdAt pages")
+    const chapters = await Chapter.find({ $or: orConditions })
+      .select("_id chapterNumber title createdAt pages hash")
       .sort({ chapterNumber: 1 })
       .lean();
 
@@ -28,9 +32,16 @@ export const getChapterDetails = async (req, res) => {
   try {
     const { mangaId, chapterNum } = req.params;
 
-    const chapter = await Chapter.findOne({ 
-      mangaId: new mongoose.Types.ObjectId(mangaId), 
-      chapterNumber: Number(chapterNum) 
+    // Accept both ObjectId and legacy string IDs
+    const orConditions = [];
+    if (mongoose.Types.ObjectId.isValid(mangaId)) {
+      orConditions.push({ mangaId: new mongoose.Types.ObjectId(mangaId) });
+    }
+    orConditions.push({ mangaId: mangaId }); // string-match fallback
+
+    const chapter = await Chapter.findOne({
+      chapterNumber: Number(chapterNum),
+      $or: orConditions
     }).lean();
 
     if (!chapter) {
@@ -38,19 +49,22 @@ export const getChapterDetails = async (req, res) => {
     }
 
     /**
-     * FIX: If the chapter has a 'hash', it's old MangaDex data.
-     * If not, it's new Cloudinary data (pages are already full URLs).
+     * Normalize image URLs:
+     * - Old MangaDex data has `hash` and page filenames -> construct full URLs
+     * - New Cloudinary chapters have full URLs in `pages`
      */
-    const imageUrls = chapter.hash 
+    const imageUrls = chapter.hash && Array.isArray(chapter.pages)
       ? chapter.pages.map(page => `https://uploads.mangadex.org/data/${chapter.hash}/${page}`)
-      : chapter.pages; // Cloudinary URLs are already absolute
+      : chapter.pages || [];
 
-    const totalChapters = await Chapter.countDocuments({ mangaId });
+    // Count total chapters for this manga (match both id formats)
+    const countConditions = orConditions.map(cond => cond);
+    const totalChapters = await Chapter.countDocuments({ $or: countConditions });
 
     res.json({
       _id: chapter._id,
       title: chapter.title || `Chapter ${chapterNum}`,
-      pages: imageUrls, 
+      pages: imageUrls,
       totalChapters: totalChapters,
       chapterNumber: chapter.chapterNumber
     });
@@ -63,10 +77,10 @@ export const getChapterDetails = async (req, res) => {
 // 3. UPLOAD NEW CHAPTER (Cloudinary Logic with batching)
 export const uploadChapter = async (req, res) => {
   try {
-    const { mangaId, chapterNumber, title } = req.body;
+    const { mangaId, chapterNumber, title, quality = 'high', jpegQuality = 65, maxWidth = 1400, convertPngToJpeg = 'true' } = req.body;
     const files = req.files; 
 
-    console.log('📤 Upload request:', { mangaId, chapterNumber, title, fileCount: files?.length });
+    console.log('📤 Upload request:', { mangaId, chapterNumber, title, quality, jpegQuality, maxWidth, convertPngToJpeg, fileCount: files?.length });
 
     if (!files || files.length === 0) {
       return res.status(400).json({ message: "No pages uploaded" });
@@ -97,13 +111,47 @@ export const uploadChapter = async (req, res) => {
       const batch = files.slice(i, i + BATCH_SIZE);
       console.log(`📦 Uploading batch ${Math.ceil((i + 1) / BATCH_SIZE)} (${batch.length} files)`);
       
-      const uploadPromises = batch.map((file, idx) => {
+      const uploadPromises = batch.map(async (file, idx) => {
         console.log(`  └─ File ${i + idx + 1}: ${file.originalname} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
-        const fileBase64 = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
-        return cloudinary.uploader.upload(fileBase64, { 
+
+        let bufferToUpload = file.buffer;
+        let mimetype = file.mimetype;
+
+        // If user requested low MB, compress the image server-side using sharp
+        if (quality === 'low') {
+          try {
+            const jpegQ = Number(jpegQuality) || 65;
+            const maxW = Number(maxWidth) || 1400;
+            const convertPng = convertPngToJpeg === 'true' || convertPngToJpeg === true;
+
+            const isPng = file.mimetype === 'image/png';
+            if (isPng && !convertPng) {
+              const compressed = await sharp(file.buffer)
+                .resize({ width: maxW, withoutEnlargement: true })
+                .png()
+                .toBuffer();
+              bufferToUpload = compressed;
+              mimetype = file.mimetype;
+              console.log(`    ↳ Compressed PNG size: ${(bufferToUpload.length / 1024 / 1024).toFixed(2)} MB`);
+            } else {
+              const compressed = await sharp(file.buffer)
+                .resize({ width: maxW, withoutEnlargement: true })
+                .jpeg({ quality: jpegQ })
+                .toBuffer();
+              bufferToUpload = compressed;
+              mimetype = 'image/jpeg';
+              console.log(`    ↳ Compressed JPEG size: ${(bufferToUpload.length / 1024 / 1024).toFixed(2)} MB`);
+            }
+          } catch (err) {
+            console.warn('    ⚠️ Compression failed; uploading original buffer', err.message);
+          }
+        }
+
+        const fileBase64 = `data:${mimetype};base64,${bufferToUpload.toString('base64')}`;
+        return cloudinary.uploader.upload(fileBase64, {
           folder: `mangas/${mangaId}/ch_${chapterNumber}`,
           resource_type: 'auto',
-          timeout: 180000 // 180 second timeout for high quality uploads
+          timeout: quality === 'high' ? 180000 : quality === 'low' ? 90000 : 120000
         }).catch(err => {
           console.error(`  ❌ Cloudinary error for file ${i + idx + 1}:`, err?.error?.message || err);
           throw err;
