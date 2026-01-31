@@ -12,4 +12,5 @@ router.get("/my-mangas", protect, getMyMangas);
 router.patch("/update-profile", protect, upload.single("profilePicture"), updateProfile);
 
 
+
 export default router;
