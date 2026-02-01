@@ -1,9 +1,17 @@
+// routes/library.js (or wherever your library router is)
 import express from "express";
-import { signup, login, updateProfile, getMe, getMyMangas } from "../controller/User.js";
 import protect from "../middleware/authMiddleware.js";
-import { upload } from "../middleware/upload.js";
-import { updateLibraryItem } from "../controller/library.js";
+import { 
+  updateLibraryItem, 
+  getLibrary // <--- You need to import your GET controller
+} from "../controller/library.js";
 
 const router = express.Router();
+
+// This handles: GET http://localhost:5000/api/library
+router.get("/", protect, getLibrary); 
+
+// This handles: POST http://localhost:5000/api/library/update
 router.post("/update", protect, updateLibraryItem);
+
 export default router;

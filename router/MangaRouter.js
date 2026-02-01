@@ -4,7 +4,8 @@ import {
   getMangas, 
   getMangaCounts,
   getMangaById, 
-  deleteManga 
+  deleteManga ,
+  updateManga
 } from '../controller/mangas.js';
 import protect from '../middleware/authMiddleware.js';
 import { upload } from '../middleware/upload.js';

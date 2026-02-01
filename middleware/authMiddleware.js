@@ -3,18 +3,23 @@ import jwt from "jsonwebtoken";
 const protect = async (req, res, next) => {
   let token;
 
-  if (req.headers.authorization?.startsWith("Bearer")) {
+  // Check both capital A and lowercase a
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+
+  if (authHeader && authHeader.startsWith("Bearer")) {
     try {
-      token = req.headers.authorization.split(" ")[1];
+      token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      
+      // Attach user ID to request
       req.user = { id: decoded.id }; 
-      return next(); // Use 'return' to stop execution here
+      return next(); 
     } catch (error) {
-      return res.status(401).json({ success: false, message: "Not authorized" });
+      return res.status(401).json({ success: false, message: "Token invalid or expired" });
     }
   }
 
-  // If we get here, no token was found
+  // If we reach here, the header was missing or didn't start with Bearer
   return res.status(401).json({ success: false, message: "No token found" });
 };
 

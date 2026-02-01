@@ -17,7 +17,7 @@ const activitySchema = new mongoose.Schema({
 // 2. LIBRARY SUB-SCHEMA
 // Powers your LibraryPage tabs (Reading, Completed, etc.)
 const libraryItemSchema = new mongoose.Schema({
-  manga: { type: mongoose.Schema.Types.ObjectId, ref: "Manga", required: true },
+  manga: { type: mongoose.Schema.Types.ObjectId, ref: "manga", required: true },
   status: { 
     type: String, 
     enum: ['Reading', 'Plan to Read', 'Completed', 'Dropped', 'On Hold'], 
@@ -32,7 +32,7 @@ const libraryItemSchema = new mongoose.Schema({
 
 // 3. UNLOCKED CONTENT SCHEMA
 const unlockedMangaSchema = new mongoose.Schema({
-  manga: { type: mongoose.Schema.Types.ObjectId, ref: "Manga", required: true },
+  manga: { type: mongoose.Schema.Types.ObjectId, ref: "manga", required: true },
   unlockedAt: { type: Date, default: Date.now },
   pointsSpent: { type: Number, default: 0 }
 }, { _id: false });
@@ -55,8 +55,8 @@ const userSchema = new mongoose.Schema({
   /* --- Content & Library --- */
   library: [libraryItemSchema],         // The "Heart" of the Library Page
   unlockedContent: [unlockedMangaSchema],
-  createdSeries: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Manga' }],
-  bookmarks: [{ type: mongoose.Schema.Types.ObjectId, ref: "Manga" }],
+  createdSeries: [{ type: mongoose.Schema.Types.ObjectId, ref: 'manga' }],
+  bookmarks: [{ type: mongoose.Schema.Types.ObjectId, ref: "manga" }],
 
   /* --- Activity & Stats --- */
   activityLog: [activitySchema],        // The Dashboard Activity Bar data

@@ -138,3 +138,42 @@ export const deleteManga = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+export const updateManga = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, genre, status, isAdult, tags } = req.body;
+
+    const manga = await Manga.findById(id);
+    if (!manga) return res.status(404).json({ success: false, message: "Manga not found" });
+
+    // Ownership Check
+    if (manga.author?.toString() !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Unauthorized" });
+    }
+
+    const updateFields = { title, description, genre, status };
+    if (isAdult !== undefined) updateFields.isAdult = isAdult === 'true' || isAdult === true;
+    
+    if (tags) {
+        try { updateFields.tags = Array.isArray(tags) ? tags : JSON.parse(tags); } catch (e) {}
+    }
+
+    if (req.file) {
+      // Delete old image
+      if (manga.coverImage?.includes("cloudinary")) {
+        await cloudinary.uploader.destroy(getPublicId(manga.coverImage));
+      }
+      updateFields.coverImage = req.file.path;
+    }
+
+    const updatedManga = await Manga.findByIdAndUpdate(
+      id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({ success: true, manga: updatedManga });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
