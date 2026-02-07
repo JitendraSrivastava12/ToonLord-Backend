@@ -8,7 +8,7 @@ import {
 } from '../controller/chapters.js';
 import protect from '../middleware/authMiddleware.js';
 import { uploadMemory } from '../middleware/upload.js';
-
+import {optionalAuth} from '../middleware/optionalAuth.js'
 const router = express.Router();
 
 /**
@@ -29,7 +29,7 @@ router.get('/content/:mangaId', getChapterContent);
  * 3. DETAIL ROUTE
  * Gets the actual images/pages for a specific chapter number
  */
-router.get('/:mangaId/index/:chapterNum', getChapterDetails);
+router.get('/:mangaId/index/:chapterNum',optionalAuth, getChapterDetails);
 
 /**
  * 4. DELETE ROUTE (Protected)

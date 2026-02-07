@@ -5,6 +5,7 @@ import {
   getMangaCounts,
   getMangaById, 
   deleteManga ,
+  getSearchSuggestions,
   updateManga
 } from '../controller/mangas.js';
 import protect from '../middleware/authMiddleware.js';
@@ -25,9 +26,10 @@ router.get('/adult', (req, res) => {
     req.query.type = 'adult'; // Force the type
     getMangas(req, res);
 });
-
+router.get('/search/suggestions', getSearchSuggestions);
 // Individual Details
 router.get('/:id', getMangaById);
+
 
 // Protected Actions
 router.post('/', protect, upload.single('coverImage'), createSeries);

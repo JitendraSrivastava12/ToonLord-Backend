@@ -4,7 +4,8 @@ import {
     postReply, 
     getComments, 
     voteComment, 
-    deleteComment 
+    deleteComment ,
+    getCreatorComments
 } from '../controller/comment.js';
 import protect from '../middleware/authMiddleware.js'; // Ensure this path is correct
 
@@ -13,8 +14,8 @@ const router = express.Router();
 // --- Public Routes ---
 // Fetch comments for a Manga or Chapter
 // Example: GET /api/comments/12345?type=Manga
+router.get('/creator', protect, getCreatorComments);
 router.get('/:targetId', getComments);
-
 // --- Private Routes (Require Login) ---
 
 // Post a new top-level comment

@@ -1,70 +1,143 @@
 import User from "../model/User.js";
-export const getLibrary = async (req, res) => {
-    try {
-        const user = await User.findById(req.user.id).populate({
-            path: 'library.manga',
-            model: 'manga'
-        });
-
-        if (!user) return res.status(404).json({ message: "User not found" });
-
-        // Filter nulls and return valid items
-        const validLibrary = user.library.filter(item => item.manga !== null);
-        res.status(200).json(validLibrary);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
 import mongoose from "mongoose";
+import Manga from "../model/Manga.js";
 
-export const updateLibraryItem = async (req, res) => {
-  const { mangaId, mangaTitle, status, progress, rating } = req.body;
-
+// GET: Fetch all library items
+export const getLibrary = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const mId = new mongoose.Types.ObjectId(mangaId);
+    const user = await User.findById(req.user.id).populate({
+      path: 'library.manga',
+      model: 'manga',
+      select: 'title coverImage genres totalChapters'
+    });
 
-    // 1. Find User
-    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // 2. Remove any existing occurrence of this manga
-    // This handles the "Delete previous occurrence" requirement
-    user.library = user.library.filter(item => item.manga.toString() !== mId.toString());
+    const activeLibrary = user.library.filter(item => item.manga !== null);
+    res.status(200).json(activeLibrary);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching library", error: error.message });
+  }
+};
 
-    // 3. Create the new Library Item
-    const newItem = {
+// UPDATE: Add or Update Library Item
+export const updateLibraryItem = async (req, res) => {
+  const { mangaId, status, progress, totalChapters, rating, currentchapter } = req.body;
+  const userId = req.user.id;
+
+  if (!mangaId || !mongoose.Types.ObjectId.isValid(mangaId)) {
+    return res.status(400).json({ message: "Invalid or missing Manga ID" });
+  }
+
+  try {
+    const mId = new mongoose.Types.ObjectId(mangaId);
+    
+    const userDoc = await User.findById(userId);
+    const mg = await Manga.findById(mangaId);
+    if (!userDoc || !mg) return res.status(404).json({ message: "User or Manga not found" });
+
+    // Check if THIS SPECIFIC status already exists for this manga
+    const existingEntry = userDoc.library.find(
+      item => item.manga.toString() === mId.toString() && item.status === status
+    );
+
+    // TOGGLE LOGIC: Remove only if the user clicks the EXACT same category twice
+    if (existingEntry && status !== 'Reading') {
+        return removeFromLibrary(req, res); 
+    }
+
+    const updatedItem = {
       manga: mId,
       status: status || 'Reading',
-      progress: progress || 1,
-      rating: rating || 0,
+      progress: progress ?? (existingEntry ? existingEntry.progress : 0),
+      totalChapters: totalChapters ?? (existingEntry ? existingEntry.totalChapters : mg.totalChapters || 0),
+      rating: rating ?? (existingEntry ? existingEntry.rating : 0),
+      currentchapter: currentchapter || (existingEntry ? existingEntry.currentchapter : 1),
       lastReadAt: new Date()
     };
 
-    // 4. Add to the FRONT of the array
-    user.library.unshift(newItem);
+    // --- NEW: Handle Subscription Logic in Manga Schema ---
+    if (status === 'Subscribe') {
+        await Manga.findByIdAndUpdate(mId, { $addToSet: { subscribers: userId } });
+    }
 
-    // 5. Update Activity Log
-    user.activityLog.push({
-      type: 'bookmark',
-      description: `Updated ${mangaTitle}`,
-      mangaTitle: mangaTitle,
+    const logType = updatedItem.status;
+    const newActivity = {
+      category: 'reader',
+      type: logType,
+      description: logType === 'Reading' 
+        ? `You were reading Chapter ${updatedItem.currentchapter} of ${mg.title}` 
+        : `You added ${mg.title} to your ${logType}s`,
+      mangaId: mId,
+      isRead: true,
       timestamp: new Date()
+    };
+
+    // Atomic Update: Remove matching status first to prevent duplicates
+    await User.updateOne(
+      { _id: userId },
+      {
+        $pull: { 
+            library: { manga: mId, status: logType },
+            activityLog: { mangaId: mId, type: logType } 
+        }
+      }
+    );
+
+    await User.findByIdAndUpdate(
+      userId,
+      {
+        $push: { 
+          library: { $each: [updatedItem], $position: 0 },
+          activityLog: { $each: [newActivity], $position: 0, $slice: 100 }
+        }
+      },
+      { new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      item: updatedItem,
+      action: 'pushed'
     });
 
-    // 6. SAVE - markModified is used because library is an array of subdocuments
-    user.markModified('library');
-    await user.save();
-
-    // 7. POPULATE with the EXACT model name used in your Manga schema ('manga')
-    const populatedUser = await User.findById(userId).populate({
-      path: 'library.manga',
-      model: 'manga' // MUST match the name in your Manga model export
-    });
-
-    res.status(200).json(populatedUser.library);
   } catch (error) {
-    console.error("LIBRARY UPDATE ERROR:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    console.error("Library Update Error:", error);
+    res.status(500).json({ message: "Update failed", error: error.message });
+  }
+};
+
+// REMOVE: Separate function to remove library item
+export const removeFromLibrary = async (req, res) => {
+  const { mangaId, status } = req.body;
+  const userId = req.user.id;
+
+  try {
+    const mId = new mongoose.Types.ObjectId(mangaId);
+
+    // --- NEW: Remove from Manga subscribers array if status is Subscribe ---
+    if (status === 'Subscribe') {
+        await Manga.findByIdAndUpdate(mId, { $pull: { subscribers: userId } });
+    }
+
+    // Atomic Pull: Removes the item and returns the updated document
+    await User.findByIdAndUpdate(
+      userId,
+      {
+        $pull: { 
+          library: { manga: mId, status: status },
+          activityLog: { mangaId: mId, type: status }
+        }
+      },
+      { new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Removed from ${status}`,
+      action: 'pulled'
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Removal failed", error: error.message });
   }
 };

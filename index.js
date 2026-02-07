@@ -14,6 +14,8 @@ import heroRoutes from './router/HeroRouter.js';
 import userRoutes from './router/UserRouter.js';
 import libraryRoutes from './router/libraryRouter.js'
 import commentRoutes from './router/CommentRouter.js'
+import analyticsRoutes from './router/AnalyticsRouter.js'
+import admin from './router/adminRouter.js'
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -31,7 +33,8 @@ app.use("/api/mangas", mangaRoutes);
 app.use("/api/chapters", chapterRoutes);
 app.use("/api/users", userRoutes);
 app.use('/api/comments', commentRoutes);
-// app.use('/api/library', libraryRoutes);
+app.use('/api/library', libraryRoutes);
+app.use('/api/analytics', analyticsRoutes);
 // Test this at http://localhost:5000/api/health
 app.get('/api/health', (req, res) => {
   res.json({
@@ -40,6 +43,8 @@ app.get('/api/health', (req, res) => {
     mongo: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
   });
 });
+
+app.use("/admin", admin);
 
 
 // 6. Connect to DB and Start Server ONCE
