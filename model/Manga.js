@@ -6,6 +6,11 @@ const MangaSchema = new mongoose.Schema({
   artist: { type: String },
   coverImage: { type: String, required: true },
   description: { type: String, required: true },
+  uploader: { 
+  type: mongoose.Schema.Types.ObjectId, 
+  ref: 'User',
+  default: null // Will be populated by the script
+},
   
   // Unique ID for API syncing (MangaDex UUID)
   externalId: { type: String, required: true, unique: true }, 
@@ -25,7 +30,8 @@ const MangaSchema = new mongoose.Schema({
   // Numeric stats
   rating: { type: Number, default: 0, required: true },
   views: { type: Number, default: 0, required: true },
-
+  isPremium: { type: Boolean, default: false },
+  price: { type: Number, default: 0 },
   // --- NEW FIELD: Array of User IDs who subscribed ---
   subscribers: [{ 
     type: mongoose.Schema.Types.ObjectId, 

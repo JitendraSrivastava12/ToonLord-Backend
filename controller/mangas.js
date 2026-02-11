@@ -194,3 +194,89 @@ export const deleteManga = async (req, res) => {
     res.json({ success: true, message: "Purge complete" });
   } catch (error) { res.status(500).json({ error: error.message }); }
 };
+// ADMIN: GET ALL MANGA (NO FILTER)
+export const adminGetAllMangas = async (req, res) => {
+  try {
+    // Fetch all manga, sorted by newest first
+    const mangas = await Manga.find().sort({ createdAt: -1 });
+    res.status(200).json(mangas);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+// ADMIN: HARD DELETE SERIES & ALL CHAPTERS
+export const adminDeleteManga = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const manga = await Manga.findById(id);
+    if (!manga) return res.status(404).json({ message: "Manga not found" });
+
+    // 1. Delete Cover from Cloudinary
+    if (manga.coverImage?.includes("cloudinary")) {
+      const publicId = manga.coverImage.split('/').slice(-2).join('/').split('.')[0];
+      await cloudinary.uploader.destroy(publicId);
+    }
+
+    // 2. Find and Delete all Chapters + Chapter Images in Cloudinary
+    const chapters = await Chapter.find({ mangaId: id });
+    for (const ch of chapters) {
+      if (ch.pages?.length > 0) {
+        const deletePromises = ch.pages.map(url => {
+          // Extracts the folder/public_id for Cloudinary
+          const pid = url.split('/').slice(-3).join('/').split('.')[0];
+          return cloudinary.uploader.destroy(pid);
+        });
+        await Promise.all(deletePromises);
+      }
+    }
+
+    // 3. Remove from Database
+    await Chapter.deleteMany({ mangaId: id });
+    await Manga.findByIdAndDelete(id);
+
+    res.json({ success: true, message: "Series and all associated chapters purged." });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+// ADMIN: UPDATE ANY MANGA
+export const adminUpdateManga = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, artist, author, status, isAdult, tags } = req.body;
+
+    const manga = await Manga.findById(id);
+    if (!manga) return res.status(404).json({ success: false, message: "Manga not found" });
+
+    const updateFields = { title, description, artist, author, status };
+    
+    if (isAdult !== undefined) updateFields.isAdult = isAdult === 'true' || isAdult === true;
+    if (tags) {
+        try { updateFields.tags = Array.isArray(tags) ? tags : JSON.parse(tags); } catch (e) {}
+    }
+
+    // Handle Cover Image Update
+    if (req.file) {
+      // Delete old image from Cloudinary if it exists
+      if (manga.coverImage?.includes("cloudinary")) {
+        const publicId = manga.coverImage.split('/').slice(-2).join('/').split('.')[0];
+        await cloudinary.uploader.destroy(publicId);
+      }
+      
+      // Upload new one
+      const fileBase64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      const uploadRes = await cloudinary.uploader.upload(fileBase64, { folder: 'manga_covers' });
+      updateFields.coverImage = uploadRes.secure_url;
+    }
+
+    const updatedManga = await Manga.findByIdAndUpdate(
+      id,
+      { $set: updateFields },
+      { new: true }
+    );
+
+    res.status(200).json({ success: true, manga: updatedManga });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import path from 'path';
 import dotenv from "dotenv";
+import Stripe from 'stripe';
 
 // 1. Load env vars first
 dotenv.config();
@@ -16,10 +17,12 @@ import libraryRoutes from './router/libraryRouter.js'
 import commentRoutes from './router/CommentRouter.js'
 import analyticsRoutes from './router/AnalyticsRouter.js'
 import admin from './router/adminRouter.js'
+import reportRoutes from './router/ReportRouter.js'
+import paymentRoutes from './router/payment.js'
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
+const stripe = new Stripe('sk_test_51Sz0zSHCbyPlNlA8oDkmQxPHso4fwPZA6DpjlGI5E9Ho92ldBufW8xyd1wZ7r3pREo4wRugiXaP5Xs6SEzxPySlp00rGAm0sL6');
 // 3. Middleware
 app.use(cors());
 app.use(express.json());
@@ -35,18 +38,9 @@ app.use("/api/users", userRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/library', libraryRoutes);
 app.use('/api/analytics', analyticsRoutes);
-// Test this at http://localhost:5000/api/health
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'Server is running',
-    cloudinary: process.env.CLOUDINARY_CLOUD_NAME ? 'Configured' : 'Missing Keys',
-    mongo: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
-  });
-});
-
+app.use("/reports",reportRoutes);
 app.use("/admin", admin);
-
-
+app.use('/api/payments', paymentRoutes);
 // 6. Connect to DB and Start Server ONCE
 mongoose.connect(process.env.MONGO_URI )
   .then(() => {

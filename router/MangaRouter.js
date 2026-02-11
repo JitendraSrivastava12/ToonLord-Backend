@@ -4,35 +4,45 @@ import {
   getMangas, 
   getMangaCounts,
   getMangaById, 
-  deleteManga ,
+  deleteManga,
   getSearchSuggestions,
-  updateManga
+  updateManga,
+  adminDeleteManga,
+  adminUpdateManga,
+  adminGetAllMangas
 } from '../controller/mangas.js';
 import protect from '../middleware/authMiddleware.js';
 import { upload } from '../middleware/upload.js';
+import admin from '../middleware/adminMiddleware.js';
 
 const router = express.Router();
 
-// Option A: If you want to keep your specific /general and /adult paths
+// --- 1. STATIC & SEARCH ROUTES (Must come before /:id) ---
+router.get('/counts', getMangaCounts);
+router.get('/search/suggestions', getSearchSuggestions);
+
 router.get('/general', (req, res) => {
-    req.query.type = 'general'; // Force the type
+    req.query.type = 'general';
     getMangas(req, res);
 });
-
-// Debug: counts of adult vs general
-router.get('/counts', getMangaCounts);
 
 router.get('/adult', (req, res) => {
-    req.query.type = 'adult'; // Force the type
+    req.query.type = 'adult';
     getMangas(req, res);
 });
-router.get('/search/suggestions', getSearchSuggestions);
-// Individual Details
+
+// --- 2. ADMIN ROUTES (Must come before /:id) ---
+// If /:id was above this, /admin/all would be treated as ID="admin"
+router.get('/admin/all', protect,admin ,adminGetAllMangas);
+router.put('/admin/:id',protect, admin, upload.single('coverImage'), adminUpdateManga);
+router.delete('/admin/:id',protect, admin, adminDeleteManga);
+
+// --- 3. SPECIFIC RESOURCE ROUTES (:id) ---
 router.get('/:id', getMangaById);
 
-
-// Protected Actions
+// --- 4. PROTECTED USER/CREATOR ACTIONS ---
 router.post('/', protect, upload.single('coverImage'), createSeries);
+router.patch('/:id', protect, upload.single('coverImage'), updateManga); // Standard update
 router.delete('/:id', protect, deleteManga);
 
 export default router;

@@ -1,70 +1,66 @@
-import express from 'express';
 import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs'; // Ensure you have bcryptjs installed: npm install bcryptjs
-import User from './model/User.js'; // Ensure this points to your User model
+import User from './model/User.js'; // Adjust path if needed
+import Manga from './model/Manga.js'; // Adjust path if needed
+import dotenv from 'dotenv';
 
-const app = express();
-const PORT = 5000;
+dotenv.config();
 
 const MONGO_URI = "mongodb+srv://jsking981_db_user:15iZRyYXNAGKZdse@cluster0.qwdhx4t.mongodb.net/ToonLordDB?appName=Cluster0";
 
-const seedAdminAccount = async () => {
+const seedUploaderID = async () => {
   try {
-    console.log("🔍 Checking for existing Admin account...");
+    console.log("🔍 Initializing Uploader Synchronization...");
+    console.log("-----------------------------------------");
 
-    const adminEmail = "jsking981@gmail.com"; // Change to your preferred admin email
-    const adminPassword = "Jsking@981"; // Change to your preferred admin password
+    // 1. Fetch only users who have items in createdSeries
+    const creators = await User.find({ 
+      createdSeries: { $exists: true, $not: { $size: 0 } } 
+    });
 
-    // 1. Check if Admin already exists
-    const existingAdmin = await User.findOne({ email: adminEmail });
-
-    if (existingAdmin) {
-      console.log(`ℹ️ Admin already exists: ${existingAdmin.username} (${existingAdmin.email})`);
-      console.log("⚠️ Skipping seed process.");
+    if (creators.length === 0) {
+      console.log("ℹ️ No users with 'createdSeries' found. Nothing to sync.");
       return;
     }
 
-    // 2. Hash the password for security
-    console.log("🔐 Hashing password...");
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(adminPassword, salt);
+    console.log(`👤 Found ${creators.length} creators. Starting update...`);
 
-    // 3. Create the Admin User
-    const newAdmin = new User({
-      username: "ToonLord_Admin",
-      email: adminEmail,
-      password: hashedPassword,
-      role: "admin",      // Critical: Set to 'admin'
-      status: "active",   // Ensure they are active
-      profilePicture: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200",
-      bio: "Master administrator of ToonLord.",
-      points: 999999      // Unlimited points for the king
-    });
+    let totalUpdated = 0;
 
-    await newAdmin.save();
-    
+    // 2. Map through each creator and update their specific mangas
+    for (const user of creators) {
+      const result = await Manga.updateMany(
+        { _id: { $in: user.createdSeries } }, // Find all mangas in this user's list
+        { $set: { uploader: user._id } }      // Apply this user's ID as the uploader
+      );
+
+      if (result.modifiedCount > 0) {
+        console.log(`✅ ${user.username}: Linked ${result.modifiedCount} series.`);
+        totalUpdated += result.modifiedCount;
+      }
+    }
+
     console.log("-----------------------------------------");
-    console.log("✨ ADMIN ACCOUNT CREATED SUCCESSFULLY ✨");
-    console.log(`📧 Email: ${adminEmail}`);
-    console.log(`🔑 Password: ${adminPassword}`);
+    console.log("✨ UPLOADER SYNC COMPLETE ✨");
+    console.log(`📊 Total Mangas Updated: ${totalUpdated}`);
     console.log("-----------------------------------------");
-    console.log("🚨 PLEASE DELETE THIS SCRIPT OR SECURE IT AFTER USE.");
 
   } catch (error) {
     console.error("❌ Seeding Error:", error);
   }
 };
 
+// Database Connection & Execution
 mongoose.connect(MONGO_URI)
   .then(async () => {
-    console.log("✅ Database Connected");
+    console.log("✅ Database Connected for Migration");
     
-    // Execute the seed
-    await seedAdminAccount();
+    await seedUploaderID();
     
-    app.listen(PORT, () => {
-      console.log(`🚀 Seed Server running on http://localhost:${PORT}`);
-      console.log("👋 You can close this process (Ctrl+C) once seeding is finished.");
-    });
+    console.log("👋 Migration finished. Closing connection...");
+    mongoose.connection.close();
+    process.exit(0);
   })
-  .catch(err => console.error("❌ DB Connection Error:", err));
+  .catch(err => {
+    console.error("❌ DB Connection Error:", err);
+    process.exit(1);
+  });

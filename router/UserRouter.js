@@ -1,11 +1,18 @@
 import User from "../model/User.js";
 import express from "express";
-import { signup, login, updateProfile, getMe, getMyMangas, updateMyManga,requestAuthor,getAllUsers,manageUserStatus,deleteUser } from "../controller/User.js";
+import { signup, login, updateProfile, getMe, getMyMangas, updateMyManga,requestAuthor,getAllUsers,manageUserStatus,deleteUser 
+  ,requestPasswordReset,resetPassword,requestSignupOTP
+} from "../controller/User.js";
 import { getActivity } from "../controller/activity.controller.js";
 import protect from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/upload.js";
 const router = express.Router();
 router.get("/activity",protect,getActivity);
+//otp
+router.post('/request-signup-otp', requestSignupOTP);
+router.post('/forgot-password', requestPasswordReset);
+router.post('/reset-password', resetPassword);
+// old ones down
 router.post("/signup", signup);
 router.post("/login", login);
 router.get("/getMe", protect, getMe);

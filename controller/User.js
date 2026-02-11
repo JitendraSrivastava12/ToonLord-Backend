@@ -4,9 +4,10 @@ import jwt from "jsonwebtoken";
 import cloudinary from "../config/cloudinary.js";
 import Manga from "../model/Manga.js";
 import { logActivity } from "../services/activity.service.js";
-/* ---------------- HELPER: LOG ACTIVITY ---------------- */
+import { sendEmail } from '../utils/sendEmail.js';
+import crypto from 'crypto';
 
-
+/* ---------------- HELPER: GENERATE TOKEN ---------------- */
 const generateToken = (id) => {
   if (!process.env.JWT_SECRET) {
     throw new Error("JWT_SECRET missing");
@@ -14,35 +15,97 @@ const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
 
-// 1. SIGNUP
-export const signup = async (req, res) => {
-  try {
-    const { username, mobile, email, password } = req.body;
+// Map to store OTPs for registration (Email -> {otp, expiry, data})
+const signupOtpStore = new Map();
 
-    if (!email || !username || !password) {
-      return res.status(400).json({ success: false, message: "Missing fields" });
+/* ---------------- 1. SIGNUP & REGISTRATION OTP ---------------- */
+
+// NEW: Request OTP for New User Registration
+export const requestSignupOTP = async (req, res) => {
+  try {
+    const { email, username } = req.body;
+    if (!email || !username) {
+      return res.status(400).json({ success: false, message: "Email and Username required" });
     }
 
-    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ $or: [{ email: normalizedEmail }, { username }] });
     if (existingUser) {
       return res.status(400).json({ success: false, message: "User already exists" });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Generate 6-digit OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const expiry = Date.now() + 5 * 60 * 1000; // 5 minutes
 
+    // Store in memory
+    signupOtpStore.set(normalizedEmail, { otp, expiry });
+
+    // Send Email
+    const mailResponse = await sendEmail(normalizedEmail, otp);
+
+    if (mailResponse.success) {
+      res.status(200).json({ success: true, message: "Registration OTP sent to email" });
+    } else {
+      throw new Error("Failed to send email");
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// UPDATED: SIGNUP (Now requires OTP)
+export const signup = async (req, res) => {
+  try {
+    const { username, mobile, email, password, otp } = req.body;
+
+    if (!email || !username || !password || !otp) {
+      return res.status(400).json({ success: false, message: "Missing fields (including OTP)" });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // 1. Verify OTP
+    const record = signupOtpStore.get(normalizedEmail);
+    if (!record) {
+      return res.status(400).json({ success: false, message: "No OTP request found for this email" });
+    }
+
+    if (Date.now() > record.expiry) {
+      signupOtpStore.delete(normalizedEmail);
+      return res.status(400).json({ success: false, message: "OTP has expired" });
+    }
+
+    if (record.otp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP code" });
+    }
+
+    // 2. Check DB one last time
+    const existingUser = await User.findOne({ $or: [{ email: normalizedEmail }, { username }] });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: "User already exists" });
+    }
+
+    // 3. Create User
+    const hashedPassword = await bcrypt.hash(password, 10);
     const user = await User.create({
       username,
       mobile,
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
       points: 100,
     });
 
+    // Cleanup OTP store
+    signupOtpStore.delete(normalizedEmail);
+
     // --- ACTIVITY: Welcome Log ---
     await logActivity(user._id, {
-      category:'system',
+      category: 'system',
       type: 'welcome',
-      description: "Welcome to the platform! You've earned 100 starting points.",
+      description: "Welcome to the platform! You've earned 100 Toon Points.",
       timestamp: new Date()
     });
 
@@ -58,7 +121,7 @@ export const signup = async (req, res) => {
   }
 };
 
-// 2. LOGIN & GET ME
+/* ---------------- 2. LOGIN & GET ME ---------------- */
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -79,23 +142,59 @@ export const login = async (req, res) => {
   }
 };
 
+import Wallet from "../model/Wallet.js";
+import Transaction from "../model/Transaction.js";
 export const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
-    if (!user) return res.status(404).json({ success: false, message: "User not found" });
-    res.status(200).json({ success: true, user });
+    if (!user) return res.status(404).json({ success: false, message: "Operative not found" });
+
+    // 1. Try to find the wallet
+    let wallet = await Wallet.findOne({ userId: req.user.id });
+
+    // 2. Fallback Logic with Duplicate Protection
+    if (!wallet) {
+      try {
+        wallet = await Wallet.create({ 
+          userId: req.user.id,
+          toonCoins: 10 
+        });
+        
+        // Update user reference
+        user.walletId = wallet._id;
+        await user.save();
+      } catch (createError) {
+        // If a duplicate key error happened here (code 11000), 
+        // it means another request created it first. Just fetch it.
+        if (createError.code === 11000) {
+          wallet = await Wallet.findOne({ userId: req.user.id });
+        } else {
+          throw createError; // Something else went wrong
+        }
+      }
+    }
+
+    const transactions = await Transaction.find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    const userData = user.toObject();
+    userData.wallet = wallet; 
+    userData.transactions = transactions;
+
+    res.status(200).json({ success: true, user: userData });
+
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("GetMe Error:", error);
+    res.status(500).json({ success: false, message: "Sync failed: " + error.message });
   }
 };
-
-// 3. UPDATE PROFILE
+/* ---------------- 3. UPDATE PROFILE ---------------- */
 export const updateProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    // 1. Prepare Update Object
     const { username, bio, location, mobile } = req.body;
     const updateFields = {};
     if (username) updateFields.username = username;
@@ -103,23 +202,18 @@ export const updateProfile = async (req, res) => {
     if (location) updateFields.location = location;
     if (mobile) updateFields.mobile = mobile;
 
-    // 2. Handle File Upload
     if (req.file) {
-      // Delete old profile picture from Cloudinary if it exists
       if (user.profilePicture && user.profilePicture.includes("cloudinary")) {
         try {
-          // Extracts the public_id from the URL
           const publicId = user.profilePicture.split('/').pop().split('.')[0];
           await cloudinary.uploader.destroy(`profile_pics/${publicId}`);
         } catch (err) {
           console.error("Old image cleanup failed:", err);
         }
       }
-      // req.file.path contains the new Cloudinary URL
       updateFields.profilePicture = req.file.path;
     }
 
-    // 3. Update Database
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
       { $set: updateFields },
@@ -136,7 +230,7 @@ export const updateProfile = async (req, res) => {
   }
 };
 
-// 4. GET MY MANGAS (Creator Dashboard)
+/* ---------------- 4. CREATOR DASHBOARD ---------------- */
 export const getMyMangas = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).populate('createdSeries');
@@ -147,7 +241,6 @@ export const getMyMangas = async (req, res) => {
   }
 };
 
-// 5. UPDATE MY MANGA (With Activity Logging)
 export const updateMyManga = async (req, res) => {
   try {
     const { mangaId } = req.params;
@@ -185,9 +278,8 @@ export const updateMyManga = async (req, res) => {
       { new: true, runValidators: true }
     );
 
-    // --- ACTIVITY: Creator Dashboard Update ---
     await logActivity(req.user.id, {
-      type: 'reading', // Map to your enum (using reading for general series activity)
+      type: 'reading',
       description: `You updated the series: ${updatedManga.title}`,
       mangaTitle: updatedManga.title,
       link: `/manga/${mangaId}`,
@@ -204,12 +296,12 @@ export const updateMyManga = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-// 6. REQUEST AUTHOR (Become a Creator)
+
+/* ---------------- 5. AUTHOR REQUEST ---------------- */
 export const requestAuthor = async (req, res) => {
   try {
     const { confirmationText } = req.body;
 
-    // 1. Validate the signature from the contract modal
     if (!confirmationText || confirmationText.trim().toLowerCase() !== 'i accept') {
       return res.status(400).json({ 
         success: false, 
@@ -220,16 +312,11 @@ export const requestAuthor = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    // 2. Safety Check: If already an author, don't repeat the process
     if (user.role === 'author') {
       return res.status(400).json({ success: false, message: "You are already a registered Author." });
     }
 
-    // 3. Upgrade Role
     user.role = 'author';
-
-    // 4. Log the Milestone to Activity Feed
-    // Note: Ensure your logActivity service matches these fields
     await logActivity(user._id, {
       category: 'system',
       type: 'milestone_reached',
@@ -238,8 +325,6 @@ export const requestAuthor = async (req, res) => {
     });
 
     await user.save();
-
-    // 5. Return updated user (excluding password)
     const updatedUser = await User.findById(user._id).select("-password");
 
     res.status(200).json({
@@ -252,17 +337,15 @@ export const requestAuthor = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-// 7. GET ALL USERS (Admin Dashboard)
+
+/* ---------------- 6. ADMIN DASHBOARD ---------------- */
 export const getAllUsers = async (req, res) => {
   try {
-    // 1. Authorization Check: Only admins should access this
     const adminUser = await User.findById(req.user.id);
     if (!adminUser || adminUser.role !== 'admin') {
       return res.status(403).json({ success: false, message: "Restricted: Admin clearance required." });
     }
 
-    // 2. Fetch all users, excluding passwords
-    // We sort by 'createdAt' so newest users appear first
     const users = await User.find()
       .select("-password")
       .sort({ createdAt: -1 });
@@ -277,29 +360,23 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-// 8. MANAGE USER STATUS (Ban/Suspend/Active)
 export const manageUserStatus = async (req, res) => {
   try {
     const { userId, status } = req.body;
-
-    // 1. Validation
     const validStatuses = ["active", "suspended", "banned"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: "Invalid status type." });
     }
 
-    // 2. Authorization Check
     const adminUser = await User.findById(req.user.id);
     if (!adminUser || adminUser.role !== 'admin') {
       return res.status(403).json({ success: false, message: "Unauthorized: Admin privileges required." });
     }
 
-    // 3. Prevent self-banning
     if (userId === req.user.id) {
       return res.status(400).json({ success: false, message: "You cannot change your own status." });
     }
 
-    // 4. Update the User
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { $set: { status: status } },
@@ -310,10 +387,9 @@ export const manageUserStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: "Target user not found." });
     }
 
-    // 5. Log System Activity for the target user
     await logActivity(userId, {
       category: 'system',
-      type: 'points_earned', // Reusing system type for notifications
+      type: 'account_alert',
       description: `Your account status has been updated to: ${status.toUpperCase()}.`,
       timestamp: new Date()
     });
@@ -327,25 +403,20 @@ export const manageUserStatus = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-// 9. DELETE USER DATA (Permanent Removal)
+
 export const deleteUser = async (req, res) => {
   try {
     const { userId } = req.params;
-
-    // 1. Authorization Check (Admin only)
     const adminUser = await User.findById(req.user.id);
     if (!adminUser || adminUser.role !== 'admin') {
       return res.status(403).json({ success: false, message: "Restricted: Admin clearance required." });
     }
 
-    // 2. Prevent self-deletion via this route
     if (userId === req.user.id) {
       return res.status(400).json({ success: false, message: "Cannot delete your own admin account here." });
     }
 
-    // 3. Delete the user
     const deletedUser = await User.findByIdAndDelete(userId);
-
     if (!deletedUser) {
       return res.status(404).json({ success: false, message: "User not found." });
     }
@@ -354,6 +425,79 @@ export const deleteUser = async (req, res) => {
       success: true,
       message: "User and associated data purged from the system."
     });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* ---------------- 7. PASSWORD RESET FLOW ---------------- */
+export const requestPasswordReset = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: "Email is required" });
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const expiry = Date.now() + 5 * 60 * 1000;
+
+    user.otp = otp;
+    user.otpExpiry = expiry;
+    await user.save();
+
+    const mailResponse = await sendEmail(user.email, otp);
+
+    if (mailResponse.success) {
+      res.status(200).json({ success: true, message: "OTP sent to your email" });
+    } else {
+      throw new Error("Failed to send email");
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ success: false, message: "All fields are required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    if (!user || !user.otp) {
+      return res.status(400).json({ success: false, message: "No OTP request found" });
+    }
+
+    if (Date.now() > user.otpExpiry) {
+      user.otp = null;
+      user.otpExpiry = null;
+      await user.save();
+      return res.status(400).json({ success: false, message: "OTP has expired" });
+    }
+
+    if (user.otp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP code" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    user.otp = null;
+    user.otpExpiry = null;
+    await user.save();
+
+    await logActivity(user._id, {
+      category: 'system',
+      type: 'account_alert',
+      description: "Your password has been successfully reset via OTP.",
+      timestamp: new Date()
+    });
+
+    res.status(200).json({ success: true, message: "Password reset successful!" });
+
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

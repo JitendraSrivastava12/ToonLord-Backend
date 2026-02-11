@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 
+
 const protect = async (req, res, next) => {
   let token;
 
@@ -24,3 +25,5 @@ const protect = async (req, res, next) => {
 };
 
 export default protect;
+
+ 

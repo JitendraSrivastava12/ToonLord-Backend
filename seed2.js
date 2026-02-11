@@ -1,8 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import Manga from './model/Manga.js'; 
-// Ensure you also import your Chapter model if you are still re-indexing
-// import Chapter from './model/Chapter.js'; 
 
 const app = express();
 const PORT = 5000;
@@ -10,54 +8,60 @@ const PORT = 5000;
 const MONGO_URI = "mongodb+srv://jsking981_db_user:15iZRyYXNAGKZdse@cluster0.qwdhx4t.mongodb.net/ToonLordDB?appName=Cluster0";
 
 /**
- * Updates Manga entries with 0 ratings or views to random values
+ * Focuses strictly on marking 100 specific mangas as Premium
  */
-const updateMangaStats = async () => {
+const seedPremiumStatus = async () => {
   try {
-    console.log("📊 Starting Manga Stats Update...");
+    console.log("💎 INITIALIZING PREMIUM PROTOCOL...");
 
-    // Find mangas where rating is 0 OR views are 0
-    const mangasToUpdate = await Manga.find({
-      $or: [{ rating: 0 }, { views: 0 }]
-    });
+    // 1. Reset all current premium statuses to start fresh (Optional)
+    await Manga.updateMany({}, { $set: { isPremium: false, price: 0 } });
+    console.log("🧹 Vault cleared. Applying new premium assignments...");
 
-    console.log(`Found ${mangasToUpdate.length} mangas needing stat updates.`);
+    // 2. Fetch target IDs (50 Adult / 50 Non-Adult)
+    const adultMangas = await Manga.find({ isAdult: true }).limit(50);
+    const generalMangas = await Manga.find({ isAdult: false }).limit(50);
 
-    for (const manga of mangasToUpdate) {
-      // Generate random rating between 3.5 and 4.9
-      const randomRating = manga.rating === 0 
-        ? parseFloat((Math.random() * (4.9 - 3.5) + 3.5).toFixed(1)) 
-        : manga.rating;
-
-      // Generate random views between 10,000 and 500,000
-      const randomViews = manga.views === 0 
-        ? Math.floor(Math.random() * (500000 - 10000) + 10000) 
-        : manga.views;
-
-      await Manga.findByIdAndUpdate(manga._id, {
-        $set: { 
-          rating: randomRating,
-          views: randomViews 
-        }
-      });
+    if (adultMangas.length === 0 && generalMangas.length === 0) {
+      console.log("⚠️ No mangas found in the database to update.");
+      return;
     }
 
-    console.log("✅ Manga stats updated successfully.");
+    console.log(`🎯 Target acquired: ${adultMangas.length} Adult & ${generalMangas.length} General titles.`);
+
+    // 3. Prepare Batch Updates
+    // Adult Premium: 50 ToonCoins
+    const adultBatch = adultMangas.map(m => 
+      Manga.findByIdAndUpdate(m._id, { 
+        $set: { isPremium: true, price: 200 } 
+      })
+    );
+
+    // General Premium: 30 ToonCoins
+    
+    const generalBatch = generalMangas.map(m => 
+      Manga.findByIdAndUpdate(m._id, { 
+        $set: { isPremium: true, price: 100 } 
+      })
+    );
+
+    // 4. Execute all updates in parallel
+    await Promise.all([...adultBatch, ...generalBatch]);
+
+    console.log("✅ VAULT UPDATED: 100 Mangas are now marked as PREMIUM.");
+    
   } catch (error) {
-    console.error("❌ Stats Update Error:", error);
+    console.error("❌ PREMIUM SEED ERROR:", error);
   }
 };
 
 mongoose.connect(MONGO_URI)
   .then(async () => {
-    console.log("✅ Database Connected");
+    console.log("✅ Database Connected to ToonLordDB");
     
-    // Run your updates
-    await updateMangaStats();
+    // Run only the premium status assignment
+    await seedPremiumStatus();
     
-    // Optional: Keep your re-indexing logic here if needed
-    // await reindexAllChapters(); 
-
-    app.listen(PORT, () => console.log(`🚀 Server on http://localhost:${PORT}`));
+    app.listen(PORT, () => console.log(`🚀 Admin Server running on http://localhost:${PORT}`));
   })
   .catch(err => console.error("❌ DB Connection Error:", err));
