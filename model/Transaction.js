@@ -23,18 +23,20 @@ const transactionSchema = new mongoose.Schema({
 
   currency: { 
     type: String, 
-    enum: ['toonCoins', 'INR'], // Removed 'Points' and 'USD' to stay focused on your specific setup
+    enum: ['toonCoins', 'INR'], 
     required: true 
   },
 
-  // The numeric value of the transaction
   amount: { 
     type: Number, 
     required: true,
     min: 0
   },
 
-  // 'in' for adding to balance, 'out' for deducting from balance
+  // Added for clear split tracking in REVENUE_SHARE
+  platformFee: { type: Number, default: 0 }, 
+  netEarning: { type: Number, default: 0 },
+
   direction: {
     type: String,
     enum: ['in', 'out'],
@@ -45,15 +47,15 @@ const transactionSchema = new mongoose.Schema({
     type: String, 
     required: true 
   },
-
-  // Contextual Links
+   // Add this inside transactionSchema
+revenueSplitRatio: { 
+  type: Number, 
+  default: 70 // e.g., 70 represents 70% to the creator
+},
   relatedManga: { type: mongoose.Schema.Types.ObjectId, ref: "manga" },
-  // Removed relatedChapter since you are doing full manga unlocks only
   
-  // If REVENUE_SHARE, this is the Author. If COIN_PURCHASE, this is the System.
   beneficiaryId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
-  // For Stripe, Razorpay, or external payment gateway IDs
   externalTransactionId: { type: String, default: null },
 
   status: { 
@@ -62,8 +64,11 @@ const transactionSchema = new mongoose.Schema({
     default: 'completed' 
   }
 }, { timestamps: true });
+
+// INDEXES
 transactionSchema.index({ userId: 1, createdAt: -1 });
-// Optimizing for Creator Dashboard
 transactionSchema.index({ beneficiaryId: 1, type: 1, createdAt: -1 });
+// Added index for revenue reports
+transactionSchema.index({ relatedManga: 1, type: 1 });
 
 export default mongoose.model("Transaction", transactionSchema);

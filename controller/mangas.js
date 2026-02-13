@@ -1,6 +1,7 @@
 import Manga from '../model/Manga.js';
 import User from '../model/User.js';
 import Chapter from '../model/Chapter.js';
+import PremiumRequest from '../model/PremiumRequest.js';
 import { v2 as cloudinary } from 'cloudinary';
 import { logActivity } from '../services/activity.service.js';
 
@@ -278,5 +279,62 @@ export const adminUpdateManga = async (req, res) => {
     res.status(200).json({ success: true, manga: updatedManga });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+export const requestPremium = async (req, res) => {
+  const manga = await Manga.findById(req.params.id);
+  if (!manga) return res.status(404).json({ message: "Manga not found" });
+
+  if (manga.premiumRequestCount >= 2) {
+    return res.status(400).json({ message: "Max request limit reached." });
+  }
+
+  manga.premiumRequestStatus = 'pending';
+  manga.premiumRequestCount += 1;
+  
+  const newRequest = await PremiumRequest.create({
+    manga: manga._id,
+    creator: req.user.id,
+    statsAtRequest: { views: manga.views, chapters: manga.TotalChapter }
+  });
+
+  manga.currentRequestId = newRequest._id;
+  await manga.save();
+
+  res.status(200).json({ message: "Request sent to Admin queue." });
+};
+export const acceptContract = async (req, res) => {
+  const manga = await Manga.findById(req.params.id);
+  if (manga.premiumRequestStatus !== 'contract_offered') return res.status(400).send();
+
+  manga.price = manga.pendingPrice;
+  manga.isPremium = true;
+  manga.premiumRequestStatus = 'approved';
+  
+  await PremiumRequest.findByIdAndUpdate(manga.currentRequestId, { status: 'accepted' });
+  await manga.save();
+
+  res.status(200).json({ message: "Contract signed. Manga is now Premium." });
+};
+export const declineContract = async (req, res) => {
+  try {
+    const mangaId = req.params.id;
+
+    // 1. Update Manga: Reset status so they can request again later
+    await Manga.findByIdAndUpdate(mangaId, {
+      premiumRequestStatus: 'none', 
+      pendingPrice: 0
+    });
+
+    // 2. Update PremiumRequest: Mark the ticket as DECLINED
+    await PremiumRequest.findOneAndUpdate(
+      { manga: mangaId, status: 'contract_offered' },
+      { status: 'declined' },
+      { sort: { createdAt: -1 } }
+    );
+
+    res.status(200).json({ message: "Offer declined by creator." });
+  } catch (err) {
+    res.status(500).json({ message: "Error during decline protocol." });
   }
 };

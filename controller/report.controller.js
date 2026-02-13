@@ -125,3 +125,13 @@ export const clearProcessedReports = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+export const getMyReports = async (req, res) => {
+  try {
+    const reports = await Report.find({ reporter: req.user.id })
+      .populate("parentManga", "title")
+      .sort({ createdAt: -1 });
+    res.status(200).json(reports);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};

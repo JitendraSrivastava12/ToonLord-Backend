@@ -9,7 +9,8 @@ import {
   updateManga,
   adminDeleteManga,
   adminUpdateManga,
-  adminGetAllMangas
+  adminGetAllMangas,requestPremium,acceptContract,
+  declineContract
 } from '../controller/mangas.js';
 import protect from '../middleware/authMiddleware.js';
 import { upload } from '../middleware/upload.js';
@@ -44,5 +45,11 @@ router.get('/:id', getMangaById);
 router.post('/', protect, upload.single('coverImage'), createSeries);
 router.patch('/:id', protect, upload.single('coverImage'), updateManga); // Standard update
 router.delete('/:id', protect, deleteManga);
+
+router.post('/request-premium/:id', protect, requestPremium);
+
+// 2. Creator accepts the Admin's offer
+router.post('/accept-contract/:id', protect, acceptContract);
+router.post('/decline-contract/:id', protect, declineContract);
 
 export default router;

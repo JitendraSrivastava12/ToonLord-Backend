@@ -2,7 +2,7 @@ import express from 'express';
 import { 
   createReport, 
   getAllReports, 
-  handleReportAction ,clearProcessedReports
+  handleReportAction ,clearProcessedReports,getMyReports
 } from '../controller/report.controller.js';
 import protect from '../middleware/authMiddleware.js';
 import admin from '../middleware/adminMiddleware.js';
@@ -21,7 +21,7 @@ router.post('/submit', createReport);
  * @route   GET /api/reports/admin/all
  * @desc    Fetch all reports for the management dashboard
  * @access  Private/Admin
- */
+ */router.get('/my-reports', protect, getMyReports);
 router.get('/admin/all',  admin, getAllReports);
 
 /**

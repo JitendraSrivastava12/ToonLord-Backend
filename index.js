@@ -19,6 +19,7 @@ import analyticsRoutes from './router/AnalyticsRouter.js'
 import admin from './router/adminRouter.js'
 import reportRoutes from './router/ReportRouter.js'
 import paymentRoutes from './router/payment.js'
+import trans from './router/transaction.js'
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -41,6 +42,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use("/reports",reportRoutes);
 app.use("/admin", admin);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/transactions', trans);
 // 6. Connect to DB and Start Server ONCE
 mongoose.connect(process.env.MONGO_URI )
   .then(() => {

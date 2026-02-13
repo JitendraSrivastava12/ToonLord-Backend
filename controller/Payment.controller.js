@@ -4,7 +4,7 @@ import Wallet from '../model/Wallet.js';
 import Transaction from '../model/Transaction.js';
 
 // Initialize Stripe with your Secret Key
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe('sk_test_51Sz0zSHCbyPlNlA8oDkmQxPHso4fwPZA6DpjlGI5E9Ho92ldBufW8xyd1wZ7r3pREo4wRugiXaP5Xs6SEzxPySlp00rGAm0sL6');
 
 // 1. CREATE CHECKOUT SESSION (POST)
 export const createCheckoutSession = async (req, res) => {

@@ -244,4 +244,40 @@ export const getCreatorComments = async (req, res) => {
   } catch (error) {
     return res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
-};0
+};
+export const getMyOwnComments = async (req, res) => {
+  try {
+    // Find comments made by the logged-in user
+    const comments = await Comment.find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .lean(); // Use lean for better performance since we will manual-populate
+
+    // Since onModelId is polymorphic, we map through to get context titles
+    const populatedComments = await Promise.all(
+      comments.map(async (comment) => {
+        let contextData = { title: "Deleted Content" };
+        
+        if (comment.onModel === "manga") {
+          const m = await Manga.findById(comment.onModelId).select("title coverImage").lean();
+          if (m) contextData = { title: m.title, image: m.coverImage };
+        } else if (comment.onModel === "chapter") {
+          const ch = await Chapter.findById(comment.onModelId).select("chapterNumber mangaId").lean();
+          if (ch) {
+            const m = await Manga.findById(ch.mangaId).select("title coverImage").lean();
+            contextData = { 
+              title: m ? m.title : "Unknown Manga", 
+              chapterNumber: ch.chapterNumber,
+              image: m?.coverImage 
+            };
+          }
+        }
+        
+        return { ...comment, context: contextData };
+      })
+    );
+
+    res.status(200).json(populatedComments);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching your comments", error: error.message });
+  }
+};

@@ -38,5 +38,26 @@ router.patch("/notifications/read",protect, async (req, res) => {
 });
 
 
+// DELETE: Clear only system notifications
+router.delete("/notifications/clear", protect, async (req, res) => {
+  try {
+    const result = await User.updateOne(
+      { _id: req.user.id },
+      { 
+        $pull: { 
+          activityLog: { category: "system" } 
+        } 
+      }
+    );
 
+    if (result.modifiedCount === 0) {
+      return res.json({ success: true, message: "No system notifications found to clear." });
+    }
+
+    res.json({ success: true, message: "System protocols purged from dossier." });
+  } catch (error) {
+    console.error("Clear System Error:", error);
+    res.status(500).json({ message: "Failed to purge system logs." });
+  }
+});
 export default router;

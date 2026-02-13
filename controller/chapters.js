@@ -25,52 +25,60 @@ export const getChapterContent = async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 };
 
-
-
+// controller/chapters.js
 export const getChapterDetails = async (req, res) => {
-    try {
-        const { mangaId, chapterNum } = req.params;
+  try {
+    const { mangaId, chapterNum } = req.params;
+    const currentUser = req.user; 
+    const chNum = Number(chapterNum);
 
-        // 1. Setup ID flexibility
-        const orConditions = [];
-        if (mongoose.Types.ObjectId.isValid(mangaId)) {
-            orConditions.push({ mangaId: new mongoose.Types.ObjectId(mangaId) });
-        }
-        orConditions.push({ mangaId: mangaId });
+    const queryId = new mongoose.Types.ObjectId(mangaId);
 
-        // 2. Parallel fetch for speed
-        const [chapter, manga] = await Promise.all([
-            Chapter.findOne({ chapterNumber: Number(chapterNum), $or: orConditions }).lean(),
-            Manga.findOne({ $or: orConditions }).select('title').lean()
-        ]);
+    const [chapter, manga] = await Promise.all([
+      Chapter.findOne({ chapterNumber: chNum, mangaId: queryId }).lean(),
+      Manga.findById(queryId).select('title isPremium uploader').lean()
+    ]);
 
-        if (!chapter) return res.status(404).json({ message: "Chapter not found" });
+    if (!chapter || !manga) return res.status(404).json({ message: "Content not found" });
 
-        // 3. --- LOG READING ACTIVITY ---
-        // Strings are converted to ObjectIds here to satisfy your User Schem
+    // --- CRITICAL PERMISSION CHECK ---
+    let hasAccess = false;
 
-        // 4. Normalize Image URLs
-        const imageUrls = chapter.hash && Array.isArray(chapter.pages)
-            ? chapter.pages.map(page => `https://uploads.mangadex.org/data/${chapter.hash}/${page}`)
-            : chapter.pages || [];
+    // 1. Uploader always has access
+    const isUploader = currentUser && manga.uploader?.toString() === currentUser._id.toString();
 
-        const totalChapters = await Chapter.countDocuments({ $or: orConditions });
+    // 2. Check if user actually owns this premium manga
+    const isOwned = currentUser?.unlockedContent?.some(item => 
+      item.manga.toString() === manga._id.toString()
+    );
 
-        // 5. Response
-        res.json({
-            _id: chapter._id,
-            title: chapter.title || `Chapter ${chapterNum}`,
-            pages: imageUrls,
-            totalChapters: totalChapters,
-            chapterNumber: chapter.chapterNumber,
-            mangaTitle: manga?.title
-        });
-
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    if (isUploader) {
+      hasAccess = true;
+    } else if (manga.isPremium) {
+      // PREVENT LEAK: If Premium, only chapters 1, 2, and 3 are free. 
+      // Chapter 4+ REQUIRES isOwned to be true.
+      hasAccess = chNum <= 3 || isOwned; 
+    } else {
+      // Free Manga logic: Guest (3 chapters) / Logged in (All)
+      hasAccess = chNum <= 3 || !!currentUser;
     }
-};
-// 3. UPLOAD NEW CHAPTER (With Activity Logging)
+
+    // 3. SECURE DATA RETURN
+    // If hasAccess is false, we return empty pages. Chapter 4 will be blank!
+    const imageUrls = hasAccess 
+      ? (chapter.hash ? chapter.pages.map(p => `https://uploads.mangadex.org/data/${chapter.hash}/${p}`) : chapter.pages)
+      : [];
+
+    res.json({
+      ...chapter,
+      pages: imageUrls, // This will be [] if they haven't bought it
+      isLocked: !hasAccess
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};// 3. UPLOAD NEW CHAPTER (With Activity Logging)
 export const uploadChapter = async (req, res) => {
   try {
     const { mangaId, chapterNumber, title, quality = 'high', jpegQuality = 65, maxWidth = 1400, convertPngToJpeg = 'true' } = req.body;

@@ -10,11 +10,11 @@ const activitySchema = new mongoose.Schema({
   type: { 
     type: String, 
     enum: [
-      'Reading', 'Bookmarks', 'Favorite', 'Subscribe', 
+      'Reading', 'Bookmarks', 'Favorite', 'Subscribe', 'Completed',
       'comment_posted', 'reply_posted', 'rating_given',
       'manga_created', 'chapter_uploaded', 'series_updated', 'series_completed','edit_chapter',
       'received_like', 'received_comment', 'received_reply', 'received_favourite',
-      'welcome', 'milestone_reached', 'coins_earned' ,'account_alert' // Changed points to coins_earned
+      'welcome', 'milestone_reached', 'coins_earned' ,'account_alert','points_earned' // Changed points to coins_earned
     ], 
     required: true 
   },
@@ -36,7 +36,7 @@ const libraryItemSchema = new mongoose.Schema({
   manga: { type: mongoose.Schema.Types.ObjectId, ref: "manga", required: true },
   status: { 
     type: String, 
-    enum: ['Reading', 'Favorite', 'Bookmarks', 'Subscribe'], 
+    enum: ['Reading', 'Favorite', 'Bookmarks', 'Subscribe','Completed'], 
     default: 'Reading' 
   },
   progress: { type: Number, default: 0 }, 

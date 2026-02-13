@@ -30,9 +30,32 @@ const MangaSchema = new mongoose.Schema({
   // Numeric stats
   rating: { type: Number, default: 0, required: true },
   views: { type: Number, default: 0, required: true },
+  freeChaptersCount: { type: Number, default: 3 },
   isPremium: { type: Boolean, default: false },
   price: { type: Number, default: 0 },
-  // --- NEW FIELD: Array of User IDs who subscribed ---
+  // Inside your MangaSchema
+premiumRequestStatus: { 
+  type: String, 
+  enum: ['none', 'pending', 'contract_offered', 'rejected', 'approved'], 
+  default: 'none' 
+},
+premiumRequestCount: { 
+  type: Number, 
+  default: 0 
+},
+pendingPrice: { 
+  type: Number, 
+  default: 0 
+}, // This stores the Admin's offer before the user accepts
+contractOfferedAt: { 
+  type: Date 
+},currentRequestId: { 
+  type: mongoose.Schema.Types.ObjectId, 
+  ref: 'PremiumRequest',
+  default: null
+},
+ // Optional: To track the 24-hour window
+// --- NEW FIELD: Array of User IDs who subscribed ---
   subscribers: [{ 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'User' 
