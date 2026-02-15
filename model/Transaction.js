@@ -16,14 +16,21 @@ const transactionSchema = new mongoose.Schema({
       'MANGA_UNLOCK',    // Spending toonCoins on a full manga
       'REFUND',          // System correction
       'CREATOR_PAYOUT',  // Author withdrawing real money (INR)
-      'REVENUE_SHARE'    // Author earning from a user's MANGA_UNLOCK
+      'REVENUE_SHARE',   // Author earning from a user's MANGA_UNLOCK
+      'VIP_PURCHASE'     // ADDED: User buying a VIP Subscription
     ], 
     required: true 
   },
 
   currency: { 
     type: String, 
-    enum: ['toonCoins', 'INR'], 
+    enum: [
+      'toonCoins', 
+      'INR', 
+      'inr',             // ADDED: Stripe often sends lowercase
+      'USD', 
+      'usd'              // ADDED: For global payment compatibility
+    ], 
     required: true 
   },
 
@@ -33,7 +40,6 @@ const transactionSchema = new mongoose.Schema({
     min: 0
   },
 
-  // Added for clear split tracking in REVENUE_SHARE
   platformFee: { type: Number, default: 0 }, 
   netEarning: { type: Number, default: 0 },
 
@@ -47,11 +53,12 @@ const transactionSchema = new mongoose.Schema({
     type: String, 
     required: true 
   },
-   // Add this inside transactionSchema
-revenueSplitRatio: { 
-  type: Number, 
-  default: 70 // e.g., 70 represents 70% to the creator
-},
+
+  revenueSplitRatio: { 
+    type: Number, 
+    default: 70 
+  },
+
   relatedManga: { type: mongoose.Schema.Types.ObjectId, ref: "manga" },
   
   beneficiaryId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -68,7 +75,6 @@ revenueSplitRatio: {
 // INDEXES
 transactionSchema.index({ userId: 1, createdAt: -1 });
 transactionSchema.index({ beneficiaryId: 1, type: 1, createdAt: -1 });
-// Added index for revenue reports
 transactionSchema.index({ relatedManga: 1, type: 1 });
 
 export default mongoose.model("Transaction", transactionSchema);

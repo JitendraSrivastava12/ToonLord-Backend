@@ -15,7 +15,7 @@ const router = express.Router();
  * 1. UPLOAD ROUTE (Protected)
  * Uses .array() because chapters have multiple pages
  */
-router.post('/upload', protect, uploadMemory.array('pages', 50), uploadChapter);
+router.post('/upload', protect, uploadMemory.array('pages', 100), uploadChapter);
 
 /**
  * 2. LIST ROUTE

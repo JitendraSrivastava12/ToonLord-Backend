@@ -33,6 +33,7 @@ export const createSeries = async (req, res) => {
       description,
       author, 
       artist,
+      uploader: req.user.id,
       isAdult: isAdult === 'true' || isAdult === true,
       tags: parsedTags,
       coverImage: coverUrl,
@@ -105,30 +106,36 @@ export const updateManga = async (req, res) => {
   }
 };
 
-// 3. LIVE SEARCH SUGGESTIONS (NEW FEATURE)
+
 export const getSearchSuggestions = async (req, res) => {
   try {
-    const { q } = req.query; 
+    const { q } = req.query;
 
     if (!q || q.trim().length < 2) {
       return res.status(200).json([]);
     }
 
-    const suggestions = await Manga.find({
-      $or: [
-        { title: { $regex: q, $options: 'i' } },
-        { author: { $regex: q, $options: 'i' } }
-      ]
-    })
-    .select('title coverImage rating status') 
-    .limit(6); 
+    // Run both queries in parallel for better performance
+    const [mangas, users] = await Promise.all([
+      Manga.find({ title: { $regex: q, $options: 'i' } })
+        .select('title coverImage status')
+        .limit(4),
+      User.find({ username: { $regex: q, $options: 'i' } })
+        .select('username profilePicture role')
+        .limit(4)
+    ]);
 
-    res.status(200).json(suggestions);
+    // Tag each result with its 'type' so the Frontend can route correctly
+    const combinedResults = [
+      ...mangas.map(m => ({ ...m._doc, type: 'manga' })),
+      ...users.map(u => ({ ...u._doc, type: 'user' }))
+    ];
+
+    res.status(200).json(combinedResults);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
-
 // 4. GET ALL MANGAS (With Adult/General filtering)
 export const getMangas = async (req, res) => {
     try {

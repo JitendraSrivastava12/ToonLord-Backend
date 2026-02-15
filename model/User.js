@@ -10,11 +10,13 @@ const activitySchema = new mongoose.Schema({
   type: { 
     type: String, 
     enum: [
-      'Reading', 'Bookmarks', 'Favorite', 'Subscribe', 'Completed',
+      'Reading', 'Bookmarks', 'Favorite', 'Subscribe', 'Completed','reading',
       'comment_posted', 'reply_posted', 'rating_given',
       'manga_created', 'chapter_uploaded', 'series_updated', 'series_completed','edit_chapter',
       'received_like', 'received_comment', 'received_reply', 'received_favourite',
-      'welcome', 'milestone_reached', 'coins_earned' ,'account_alert','points_earned' // Changed points to coins_earned
+      'welcome', 'milestone_reached', 'coins_earned' ,'account_alert','points_earned',
+      'new_follower',
+      'vip_activated', 'vip_expired', 'perk_redeemed' // ADDED: VIP Notifications
     ], 
     required: true 
   },
@@ -31,7 +33,7 @@ const activitySchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now }
 }, { _id: false });
 
-// 2. LIBRARY SUB-SCHEMA (Tracks reading progress)
+// 2. LIBRARY SUB-SCHEMA
 const libraryItemSchema = new mongoose.Schema({
   manga: { type: mongoose.Schema.Types.ObjectId, ref: "manga", required: true },
   status: { 
@@ -47,11 +49,11 @@ const libraryItemSchema = new mongoose.Schema({
 }, { _id: false });
 
 // 3. SIMPLIFIED UNLOCKED CONTENT SCHEMA
-// Now specifically for Full Manga Access
 const unlockedItemSchema = new mongoose.Schema({
   manga: { type: mongoose.Schema.Types.ObjectId, ref: "manga", required: true },
   unlockedAt: { type: Date, default: Date.now },
-  amountSpent: { type: Number, default: 0 } // Recorded in toonCoins
+  amountSpent: { type: Number, default: 0 },
+  method: { type: String, enum: ['coins', 'vip_credit'], default: 'coins' } // ADDED: Track if unlocked via VIP credit
 }, { _id: false });
 
 // 4. MAIN USER SCHEMA
@@ -76,16 +78,35 @@ const userSchema = new mongoose.Schema({
     enum: ["active", "suspended", "banned"], 
     default: "active" 
   },
+
+  /* --- VIP SUBSCRIPTION SYSTEM (NEW) --- */
+  vipStatus: {
+    isVip: { type: Boolean, default: false },
+    plan: { 
+      type: String, 
+      enum: ['none', 'monthly', 'quarterly', 'half-yearly', 'yearly'], 
+      default: 'none' 
+    },
+    startDate: { type: Date },
+    expiresAt: { type: Date },
+    freeMangaCredits: { type: Number, default: 0 }, // For Annual Bonus
+    stripeSubscriptionId: { type: String } // To handle cancellations
+  },
+
   reports: { type: Number, default: 0 },
   suspensionUntil: { type: Date, default: null },
 
   /* --- Links --- */
   walletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet' },
 
+  /* --- Social Graph --- */
+  followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+
   /* --- Content & Library --- */
   library: [libraryItemSchema], 
-  unlockedContent: [unlockedItemSchema], // Array of Manga IDs owned by user
-  createdSeries: [{ type: mongoose.Schema.Types.ObjectId, ref: 'manga' }],               
+  unlockedContent: [unlockedItemSchema], 
+  createdSeries: [{ type: mongoose.Schema.Types.ObjectId, ref: 'manga' }],                 
 
   /* --- Activity & Stats --- */
   activityLog: [activitySchema], 
@@ -102,6 +123,10 @@ const userSchema = new mongoose.Schema({
 // Indexes for performance
 userSchema.index({ email: 1 });
 userSchema.index({ username: 1 });
-userSchema.index({ "unlockedContent.manga": 1 }); // Important for quick "Owned" checks
+userSchema.index({ followers: 1 });
+userSchema.index({ following: 1 });
+userSchema.index({ "vipStatus.isVip": 1 }); // ADDED: Speed up premium feature checks
+userSchema.index({ "vipStatus.expiresAt": 1 }); // ADDED: For cleanup cron jobs
+userSchema.index({ "unlockedContent.manga": 1 }); 
 
 export default mongoose.model("User", userSchema);

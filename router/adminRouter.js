@@ -1,6 +1,6 @@
 import express from 'express';
 import  adminLogin  from '../controller/adminlogin.controller.js';
-import { getAllContracts, getPremiumQueue, sendContractOffer,getAdminStats } from '../controller/adminConrtroller.js';
+import { getAllContracts, getPremiumQueue, sendContractOffer,getAdminStats ,getGlobalAnalytics, getAllLogs} from '../controller/adminConrtroller.js';
 import admin from '../middleware/adminMiddleware.js';
 import protect from '../middleware/authMiddleware.js';
 
@@ -14,4 +14,6 @@ router.get('/premium-queue', protect, admin, getPremiumQueue);
 router.post('/issue-contract', protect, admin, sendContractOffer);
 router.get('/all-contracts', protect, admin, getAllContracts);
 router.get('/stats', protect, admin, getAdminStats);
+router.get('/analytics/global', protect, admin, getGlobalAnalytics);
+router.get('/logs', protect, admin, getAllLogs);
 export default router;

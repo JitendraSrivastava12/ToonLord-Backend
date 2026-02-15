@@ -94,8 +94,7 @@ export const signup = async (req, res) => {
       username,
       mobile,
       email: normalizedEmail,
-      password: hashedPassword,
-      points: 100,
+      password: hashedPassword
     });
 
     // Cleanup OTP store
@@ -105,7 +104,7 @@ export const signup = async (req, res) => {
     await logActivity(user._id, {
       category: 'system',
       type: 'welcome',
-      description: "Welcome to the platform! You've earned 100 Toon Points.",
+      description: "Welcome to the platform! You've earned 10 Toon Coins.",
       timestamp: new Date()
     });
 
@@ -114,7 +113,7 @@ export const signup = async (req, res) => {
     res.status(201).json({
       success: true,
       token,
-      user: { id: user._id, username: user.username, role: user.role, points: user.points },
+      user: { id: user._id, username: user.username, role: user.role },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -135,7 +134,7 @@ export const login = async (req, res) => {
     res.status(200).json({
       success: true,
       token,
-      user: { id: user._id, username: user.username, role: user.role, points: user.points },
+      user: { id: user._id, username: user.username, role: user.role },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -500,5 +499,288 @@ export const resetPassword = async (req, res) => {
 
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+import { OAuth2Client } from 'google-auth-library';
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+export const googleLogin = async (req, res) => {
+  try {
+    const { idToken } = req.body; // Sent from frontend
+
+    // 1. Verify the Google Token
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const { email, name, picture, sub: googleId } = ticket.getPayload();
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // 2. Find or Create User
+    let user = await User.findOne({ email: normalizedEmail });
+
+    if (!user) {
+      // Logic for New User (Social Signup)
+      user = await User.create({
+        username: name.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 1000), // Create a unique username
+        email: normalizedEmail,
+        password: crypto.randomBytes(16).toString('hex'), // Random password since they use Google
+        profilePicture: picture,
+        status: 'active'
+      });
+
+      // Log Welcome Activity
+      await logActivity(user._id, {
+        category: 'system',
+        type: 'welcome',
+        description: "Welcome to ToonLord via Google! You've earned 10 Toon Coins.",
+        timestamp: new Date()
+      });
+    }
+
+    // 3. Generate ToonLord JWT
+    const token = generateToken(user._id);
+
+    res.status(200).json({
+      success: true,
+      token,
+      user: { 
+        id: user._id, 
+        username: user.username, 
+        role: user.role
+      },
+    });
+
+  } catch (error) {
+    console.error("Google Auth Error:", error);
+    res.status(500).json({ success: false, message: "Google Authentication failed" });
+  }
+};
+/* ---------------- 8. VISITOR PROFILE & FOLLOW ---------------- */
+
+// A. Get Public Profile by ID
+export const getUserProfile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // 1. Fetch User (Exclude sensitive data)
+    const user = await User.findById(id)
+      .select("username profilePicture bio location role followers following activityLog status vipStatus")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    // 2. Fetch associated Mangas
+    // We check BOTH the 'uploader' field AND the User's 'createdSeries' array for compatibility
+    const mangas = await Manga.find({ 
+      $or: [
+        { uploader: id },
+        { _id: { $in: user.createdSeries || [] } } 
+      ]
+    }).select("title coverImage status tags rating views vipStatus");
+
+    // 3. Prepare response with counts
+    const userData = {
+      ...user,
+      followersCount: user.followers?.length || 0,
+      followingCount: user.following?.length || 0
+    };
+
+    res.status(200).json({ 
+      success: true, 
+      user: userData, 
+      mangas: mangas // Frontend is expecting this specifically
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// B. Get User's Mangas (Public)
+export const getUserMangas = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const mangas = await Manga.find({ uploader: id }).select("title coverImage status tags rating views");
+    res.status(200).json({ success: true, mangas });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// --- UPDATED: Toggle Follow Link with separate Activity and Notification logic ---
+// --- FIXED: Toggle Follow Link with exact Schema matching ---
+export const toggleFollow = async (req, res) => {
+  try {
+    const targetId = req.params.id;
+    const selfId = req.user.id; 
+
+    if (targetId === selfId) {
+      return res.status(400).json({ success: false, message: "You cannot follow yourself." });
+    }
+
+    const targetUser = await User.findById(targetId);
+    const currentUser = await User.findById(selfId);
+
+    if (!targetUser || !currentUser) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    const isFollowing = currentUser.following.includes(targetId);
+
+    if (isFollowing) {
+      // --- UNFOLLOW LOGIC ---
+      currentUser.following.pull(targetId);
+      targetUser.followers.pull(selfId);
+      
+      await logActivity(selfId, {
+        category: 'reader',
+        type: 'Reading', 
+        description: `You stopped following ${targetUser.username}.`,
+        timestamp: new Date()
+      });
+    } else {
+      // --- FOLLOW LOGIC ---
+      currentUser.following.push(targetId);
+      targetUser.followers.push(selfId);
+
+      // 1. ACTIVITY: Your private history
+      await logActivity(selfId, {
+        category: 'reader',
+        type: 'Reading', 
+        description: `You started following ${targetUser.username}.`,
+        timestamp: new Date()
+      });
+
+      // 2. NOTIFICATION: This matches your activitySchema exactly
+      targetUser.activityLog.push({
+        category: 'system', 
+        type: 'new_follower', 
+        description: `${currentUser.username} started following you.`,
+        isRead: false,
+        originator: {
+          userId: currentUser._id, // Matches ref: "User"
+          username: currentUser.username,
+          avatar: currentUser.profilePicture
+        },
+        timestamp: new Date()
+      });
+    }
+
+    // Save both documents
+    await currentUser.save();
+    await targetUser.save();
+
+    res.status(200).json({ 
+      success: true, 
+      isFollowing: !isFollowing,
+      currentUser: { 
+        ...currentUser.toObject(),
+        password: null 
+      }
+    });
+  } catch (error) {
+    console.error("Follow Sequence Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+/* ---------------- 9. CONNECTION LISTS (REAL-TIME) ---------------- */
+
+// A. Get My Followers List
+export const getMyFollowers = async (req, res) => {
+  try {
+    // Look up current user and populate the 'followers' array with specific fields
+    const user = await User.findById(req.user.id)
+      .populate('followers', 'username profilePicture role bio')
+      .select('followers');
+
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    res.status(200).json(user.followers);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// B. Get My Following List
+export const getMyFollowing = async (req, res) => {
+  try {
+    // Look up current user and populate the 'following' array
+    const user = await User.findById(req.user.id)
+      .populate('following', 'username profilePicture role bio vipStatus')
+      .select('following');
+
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    res.status(200).json(user.following);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+/* ---------------- 10. VISITOR CONNECTION LISTS ---------------- */
+
+// A. Get Target User's Followers (Public)
+export const getTargetFollowers = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id)
+      .populate('followers', 'username profilePicture role bio location vipStatus')
+      .select('followers');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    res.status(200).json(user.followers);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// B. Get Target User's Following (Public)
+export const getTargetFollowing = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id)
+      .populate('following', 'username profilePicture role bio location vipStatus')
+      .select('following');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    res.status(200).json(user.following);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+export const redeemVipCredit = async (req, res) => {
+  const { mangaId } = req.body;
+  const userId = req.user.id;
+
+  try {
+    const user = await User.findById(userId);
+    if (user.vipStatus.freeMangaCredits <= 0) {
+      return res.status(400).json({ message: "No VIP credits available." });
+    }
+
+    // Check if already unlocked
+    const alreadyUnlocked = user.unlockedContent.some(item => item.manga.toString() === mangaId);
+    if (alreadyUnlocked) return res.status(400).json({ message: "Already unlocked." });
+
+    // Deduct credit and unlock
+    const updatedUser = await User.findByIdAndUpdate(userId, {
+      $inc: { 'vipStatus.freeMangaCredits': -1 },
+      $push: { 
+        unlockedContent: { manga: mangaId, method: 'vip_credit' },
+        activityLog: { category: 'reader', type: 'perk_redeemed', description: 'Unlocked a series using VIP credit.' }
+      }
+    }, { new: true });
+
+    res.json({ success: true, user: updatedUser });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 };

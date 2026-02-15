@@ -1,5 +1,6 @@
 import express from 'express';
-import { createCheckoutSession, verifyPayment } from '../controller/Payment.controller.js';
+import protect from '../middleware/authMiddleware.js';
+import { createCheckoutSession, verifyPayment,createVipSession } from '../controller/Payment.controller.js';
 
 const router = express.Router();
 
@@ -15,6 +16,7 @@ router.post('/create-checkout-session', createCheckoutSession);
  * @desc    Verifies the Stripe session status and updates User Wallet/Transactions
  * @access  Private
  */
+router.post('/subscription', protect, createVipSession);
 router.get('/verify/:sessionId', verifyPayment);
 
 export default router;

@@ -1,7 +1,7 @@
 import User from "../model/User.js";
 import express from "express";
 import { signup, login, updateProfile, getMe, getMyMangas, updateMyManga,requestAuthor,getAllUsers,manageUserStatus,deleteUser 
-  ,requestPasswordReset,resetPassword,requestSignupOTP
+  ,requestPasswordReset,resetPassword,requestSignupOTP,googleLogin,getUserMangas,getUserProfile,toggleFollow,getMyFollowers,getMyFollowing,getTargetFollowers,getTargetFollowing,redeemVipCredit
 } from "../controller/User.js";
 import { getActivity } from "../controller/activity.controller.js";
 import protect from "../middleware/authMiddleware.js";
@@ -15,6 +15,7 @@ router.post('/reset-password', resetPassword);
 // old ones down
 router.post("/signup", signup);
 router.post("/login", login);
+router.post("/google-login", googleLogin);
 router.get("/getMe", protect, getMe);
 router.post("/request-author", protect, requestAuthor);
 router.get("/my-mangas", protect, getMyMangas);
@@ -23,11 +24,25 @@ router.put("/my-mangas/update/:mangaId",protect,upload.single('coverImage'),upda
   router.get("/all", protect, getAllUsers);
 router.patch("/manage-status", protect, manageUserStatus);
 router.delete("/delete/:userId", protect, deleteUser);
+// Add these to your existing protected routes section
+router.get("/me/followers", protect, getMyFollowers);
+router.get("/me/following", protect, getMyFollowing);
 router.get("/notifications", protect,async (req, res) => {
   const user = await User.findById(req.user.id).select("activityLog");
   res.json(user.activityLog);
 });
+router.get("/profile/:id", getUserProfile);
 
+// Public: Get the public manga archive of a specific user
+router.get("/mangas/:id", getUserMangas);
+
+// Protected: Establish or Disconnect a neural link (Follow/Unfollow)
+router.post("/:id/follow", protect, toggleFollow);
+
+// Add these near your existing public profile routes
+router.get("/:id/followers", getTargetFollowers);
+router.get("/:id/following", getTargetFollowing);
+router.post('/redeem-vip-credit', protect, redeemVipCredit);
 // PATCH: Mark all as read
 router.patch("/notifications/read",protect, async (req, res) => {
   await User.updateOne(
