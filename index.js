@@ -24,8 +24,14 @@ import rat from './router/RatingRouter.js'
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// 3. Middleware
-app.use(cors());
+// 3. Middleware - UPDATED FOR DEPLOYMENT
+const corsOptions = {
+  // Allow your Vercel URL and Localhost for development
+  origin: [process.env.CLIENT_URL, 'http://localhost:5173'], 
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // 4. Static Files
@@ -35,7 +41,6 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use("/api", heroRoutes);
 app.use("/api/mangas", mangaRoutes);
 app.use("/api/chapters", chapterRoutes);
-// User routes now handle followers/following logic we added
 app.use("/api/users", userRoutes); 
 app.use('/api/comments', commentRoutes);
 app.use('/api/library', libraryRoutes);
@@ -44,11 +49,14 @@ app.use("/reports", reportRoutes);
 app.use("/admin", admin);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/transactions', trans);
-// RATING SYSTEM ONLINE
 app.use('/api/ratings', rat);
 
-/* --- 6. GLOBAL ERROR HANDLER (CRASH PROTECTION) --- */
-// This catches any 500 errors so the server doesn't just die
+// 6. Health Check (Crucial for Render/Vercel connectivity)
+app.get("/health", (req, res) => {
+  res.status(200).send("ToonLord Engine: Operational");
+});
+
+/* --- 7. GLOBAL ERROR HANDLER --- */
 app.use((err, req, res, next) => {
   console.error("🚨 SYSTEM_ERROR:", err.stack);
   res.status(500).json({ 
@@ -58,24 +66,20 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 7. Connect to DB and Start Server
+// 8. Connect to DB and Start Server
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      serverSelectionTimeoutMS: 10000, 
-      socketTimeoutMS: 45000,         
-      family: 4                       
-    });
+    // Ensure MONGO_URI is in your Render Environment Variables
+    await mongoose.connect(process.env.MONGO_URI);
 
-    console.log("✅ Connected to MongoDB Atlas");
+    console.log("✅ Linked to Neural Archive (MongoDB)");
 
     app.listen(PORT, () => {
-      console.log(`🚀 ToonLord Engine running on http://localhost:${PORT}`);
+      console.log(`🚀 ToonLord Engine Online on Port ${PORT}`);
     });
 
   } catch (err) {
-    console.error("❌ DB Connection failed:", err.message);
-    console.log("🔄 Retrying connection in 5 seconds...");
+    console.error("❌ Connection failed:", err.message);
     setTimeout(connectDB, 5000);
   }
 };
