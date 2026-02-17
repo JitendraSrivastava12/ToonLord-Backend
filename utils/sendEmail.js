@@ -1,60 +1,33 @@
-import nodemailer from 'nodemailer';
-console.log("Attempting to initialize transporter with:", process.env.EMAIL_USER);
-const transporter = nodemailer.createTransport({
-    host: '74.125.202.108', // This is one of Gmail's IPv4 addresses
-    port: 587,
-    secure: false,
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS 
-    },
-    tls: {
-        // Since we are using an IP instead of a domain, 
-        // we must tell TLS which domain we expect for the certificate
-        servername: 'smtp.gmail.com',
-        rejectUnauthorized: false 
-    }
-});
-if (transporter) {
-    console.log("Transporter object created successfully.");
-}
-// Verify connection on startup
-transporter.verify((error) => {
-    if (error) {
-        console.error('❌ Mailer Configuration Error:', error);
-    } else {
-        console.log('✅ Mail Server Ready');
-    }
-});
+import Brevo from "@getbrevo/brevo";
+
+const apiInstance = new Brevo.TransactionalEmailsApi();
+
+// Set the API Key (Use your xkeysib-... key here)
+apiInstance.setApiKey(
+  Brevo.TransactionalEmailsApiApiKeys.apiKey,
+  process.env.BREVO_API_KEY
+);
 
 /**
- * Sends an OTP email to the user
- * @param {string} userEmail - Recipient's email
- * @param {string|number} otp - The generated code
+ * Sends a Transactional Email via Brevo API (No SMTP)
+ * @param {Object} options - { email, subject, html }
  */
-export const sendEmail = async (userEmail, otp) => {
-    const mailOptions = {
-        from: `"ToonLord" <${process.env.EMAIL_USER}>`,
-        to: userEmail,
-        subject: 'Verification Code',
-        text: `Your OTP is ${otp}. It expires in 5 minutes.`,
-        html: `
-        <div style="font-family: sans-serif; text-align: center; border: 1px solid #eee; padding: 20px;">
-            <h2>Verify Your Account</h2>
-            <p>Your One-Time Password (OTP) is:</p>
-            <h1 style="color: #4A90E2; font-size: 40px; letter-spacing: 5px;">${otp}</h1>
-            <p style="color: #666;">This code will expire in 5 minutes.</p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-            <small style="color: #999;">If you didn't request this, please ignore this email.</small>
-        </div>
-        `
-    };
+export const sendEmail = async (options) => {
+  try {
+    const sendSmtpEmail = new Brevo.SendSmtpEmail();
 
-    try {
-        const info = await transporter.sendMail(mailOptions);
-        return { success: true, messageId: info.messageId };
-    } catch (error) {
-        console.error("Email send failed:", error);
-        return { success: false, error: error.message };
-    }
+    sendSmtpEmail.subject = options.subject;
+    sendSmtpEmail.htmlContent = options.html;
+    // Ensure this matches your Verified Sender in Brevo Dashboard
+    sendSmtpEmail.sender = { email: "toonlord981@gmail.com", name: "ToonLord" };
+    sendSmtpEmail.to = [{ email: options.email }];
+
+    const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log("✅ API Delivery Success. ID:", response.body.messageId);
+    return { success: true, messageId: response.body.messageId };
+  } catch (error) {
+    // Detailed logging for debugging 400 errors
+    console.error("❌ Brevo API Error:", error.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
 };
