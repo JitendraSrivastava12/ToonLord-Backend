@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-
+console.log("Attempting to initialize transporter with:", process.env.EMAIL_USER);
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 587,
@@ -13,7 +13,9 @@ const transporter = nodemailer.createTransport({
         rejectUnauthorized: false 
     }
 });
-
+if (transporter) {
+    console.log("Transporter object created successfully.");
+}
 // Verify connection on startup
 transporter.verify((error) => {
     if (error) {
