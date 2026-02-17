@@ -1,15 +1,17 @@
 import nodemailer from 'nodemailer';
 console.log("Attempting to initialize transporter with:", process.env.EMAIL_USER);
 const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
+    host: '74.125.202.108', // This is one of Gmail's IPv4 addresses
     port: 587,
-    secure: false, 
+    secure: false,
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS 
-    }, // <--- THIS COMMA WAS MISSING
+    },
     tls: {
-        // Cloud servers often have certificate issues; this bypasses them
+        // Since we are using an IP instead of a domain, 
+        // we must tell TLS which domain we expect for the certificate
+        servername: 'smtp.gmail.com',
         rejectUnauthorized: false 
     }
 });
