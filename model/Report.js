@@ -9,7 +9,6 @@ const reportSchema = new mongoose.Schema({
   targetUser: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: "User", 
-    required: true 
   },
   // Added Manga reference for easier Admin filtering
   parentManga: {
