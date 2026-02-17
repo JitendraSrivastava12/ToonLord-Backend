@@ -876,45 +876,42 @@ export const toggleFollow = async (req, res) => {
 
     const isFollowing = currentUser.following.includes(targetId);
 
-    if (isFollowing) {
-      // --- UNFOLLOW LOGIC ---
-      currentUser.following.pull(targetId);
-      targetUser.followers.pull(selfId);
+    // --- Inside toggleFollow unfollow logic ---
+if (isFollowing) {
+  currentUser.following.pull(targetId);
+  targetUser.followers.pull(selfId);
 
-      await logActivity(selfId, {
-        category: "reader",
-        type: "Reading",
-        description: `You stopped following ${targetUser.username}.`,
-        timestamp: new Date(),
-      });
-    } else {
-      // --- FOLLOW LOGIC ---
-      currentUser.following.push(targetId);
-      targetUser.followers.push(selfId);
+  await logActivity(selfId, {
+    category: "reader", // Required
+    type: "Reading",
+    description: `You stopped following ${targetUser.username}.`,
+    timestamp: new Date(),
+  });
+} else {
+  // --- Inside toggleFollow follow logic ---
+  currentUser.following.push(targetId);
+  targetUser.followers.push(selfId);
 
-      // 1. ACTIVITY: Your private history
-      await logActivity(selfId, {
-        category: "reader",
-        type: "Reading",
-        description: `You started following ${targetUser.username}.`,
-        timestamp: new Date(),
-      });
+  await logActivity(selfId, {
+    category: "reader", // Required
+    type: "Reading",
+    description: `You started following ${targetUser.username}.`,
+    timestamp: new Date(),
+  });
 
-      // 2. NOTIFICATION: This matches your activitySchema exactly
-      targetUser.activityLog.push({
-        category: "system",
-        type: "new_follower",
-        description: `${currentUser.username} started following you.`,
-        isRead: false,
-        originator: {
-          userId: currentUser._id, // Matches ref: "User"
-          username: currentUser.username,
-          avatar: currentUser.profilePicture,
-        },
-        timestamp: new Date(),
-      });
-    }
-
+  targetUser.activityLog.push({
+    category: "system", // Required
+    type: "new_follower",
+    description: `${currentUser.username} started following you.`,
+    isRead: false,
+    originator: {
+      userId: currentUser._id,
+      username: currentUser.username,
+      avatar: currentUser.profilePicture,
+    },
+    timestamp: new Date(),
+  });
+}
     // Save both documents
     await currentUser.save();
     await targetUser.save();

@@ -4,8 +4,10 @@ import mongoose from "mongoose";
 const activitySchema = new mongoose.Schema({
   category: { 
     type: String, 
+    default: 'system',
     enum: ['reader', 'creator', 'system'], 
     required: true 
+    
   },
   type: { 
     type: String, 

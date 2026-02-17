@@ -1,60 +1,46 @@
 import mongoose from 'mongoose';
-import User from './model/User.js'; // Adjust path if needed
-import Manga from './model/Manga.js'; // Adjust path if needed
+import User from './model/User.js'; // Adjust path
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const MONGO_URI = "mongodb+srv://jsking981_db_user:15iZRyYXNAGKZdse@cluster0.qwdhx4t.mongodb.net/ToonLordDB?appName=Cluster0";
 
-const seedUploaderID = async () => {
+const repairActivityLogs = async () => {
   try {
-    console.log("🔍 Initializing Uploader Synchronization...");
+    console.log("🔍 Initializing Activity Log Repair...");
     console.log("-----------------------------------------");
 
-    // 1. Fetch only users who have items in createdSeries
-    const creators = await User.find({ 
-      createdSeries: { $exists: true, $not: { $size: 0 } } 
-    });
-
-    if (creators.length === 0) {
-      console.log("ℹ️ No users with 'createdSeries' found. Nothing to sync.");
-      return;
-    }
-
-    console.log(`👤 Found ${creators.length} creators. Starting update...`);
-
-    let totalUpdated = 0;
-
-    // 2. Map through each creator and update their specific mangas
-    for (const user of creators) {
-      const result = await Manga.updateMany(
-        { _id: { $in: user.createdSeries } }, // Find all mangas in this user's list
-        { $set: { uploader: user._id } }      // Apply this user's ID as the uploader
-      );
-
-      if (result.modifiedCount > 0) {
-        console.log(`✅ ${user.username}: Linked ${result.modifiedCount} series.`);
-        totalUpdated += result.modifiedCount;
+    // We look for users who have at least one activityLog entry missing the 'category' field
+    const result = await User.updateMany(
+      { "activityLog.category": { $exists: false } }, 
+      { 
+        $set: { "activityLog.$[elem].category": "system" } 
+      },
+      { 
+        // Filter to only update array elements where category is missing
+        arrayFilters: [{ "elem.category": { $exists: false } }],
+        multi: true 
       }
-    }
+    );
 
+    console.log(`✅ Repair Analysis:`);
+    console.log(`📊 Documents Scanned: ${result.matchedCount}`);
+    console.log(`🛠️ Logs Fixed: ${result.modifiedCount}`);
     console.log("-----------------------------------------");
-    console.log("✨ UPLOADER SYNC COMPLETE ✨");
-    console.log(`📊 Total Mangas Updated: ${totalUpdated}`);
-    console.log("-----------------------------------------");
+    console.log("✨ DATABASE REPAIR COMPLETE ✨");
 
   } catch (error) {
-    console.error("❌ Seeding Error:", error);
+    console.error("❌ Migration Error:", error);
   }
 };
 
 // Database Connection & Execution
 mongoose.connect(MONGO_URI)
   .then(async () => {
-    console.log("✅ Database Connected for Migration");
+    console.log("✅ Database Connected for Repair");
     
-    await seedUploaderID();
+    await repairActivityLogs();
     
     console.log("👋 Migration finished. Closing connection...");
     mongoose.connection.close();
