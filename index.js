@@ -20,7 +20,7 @@ import reportRoutes from './router/ReportRouter.js';
 import paymentRoutes from './router/payment.js';
 import trans from './router/transaction.js';
 import rat from './router/RatingRouter.js'
-
+import './utils/sendEmail.js';
 const app = express();
 const PORT = process.env.PORT || 5000;
 
