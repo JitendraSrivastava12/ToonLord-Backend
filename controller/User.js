@@ -54,7 +54,74 @@ export const requestSignupOTP = async (req, res) => {
       email: normalizedEmail,
       otp: otp,
       subject: "Verify Your ToonLord Account", // Required for Brevo API
-      html: `<p>Your OTP is: <b>${otp}</b>. It expires in 5 minutes.</p>`, // Required if not using templateId
+      html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>ToonLord OTP</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f6f8; font-family:Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="500" cellpadding="0" cellspacing="0" 
+          style="background:#ffffff; border-radius:12px; padding:40px; box-shadow:0 10px 30px rgba(0,0,0,0.08);">
+          
+          <tr>
+            <td align="center">
+              <h1 style="margin:0; color:#111827; font-size:26px;">
+                📚 ToonLord
+              </h1>
+              <p style="color:#6b7280; font-size:14px; margin-top:8px;">
+                Secure Account Verification
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:30px 0 20px 0; text-align:center;">
+              <p style="color:#374151; font-size:16px;">
+                Your One-Time Password (OTP) is:
+              </p>
+
+              <div style="
+                display:inline-block;
+                padding:15px 30px;
+                background:#111827;
+                color:#ffffff;
+                font-size:28px;
+                font-weight:bold;
+                letter-spacing:5px;
+                border-radius:8px;
+                margin-top:10px;">
+                ${otp}
+              </div>
+
+              <p style="color:#6b7280; font-size:14px; margin-top:20px;">
+                This code is valid for <strong>10 minutes</strong>.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="border-top:1px solid #e5e7eb; padding-top:20px; text-align:center;">
+              <p style="color:#9ca3af; font-size:12px;">
+                If you did not request this, please ignore this email.
+              </p>
+              <p style="color:#9ca3af; font-size:12px; margin-top:5px;">
+                © ${new Date().getFullYear()} t. All rights reserved.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`, // Required if not using templateId
     });
 
     if (mailResponse.success) {
@@ -575,7 +642,7 @@ export const requestPasswordReset = async (req, res) => {
                 letter-spacing:5px;
                 border-radius:8px;
                 margin-top:10px;">
-                ${otpCode}
+                ${otp}
               </div>
 
               <p style="color:#6b7280; font-size:14px; margin-top:20px;">
