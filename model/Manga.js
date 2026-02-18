@@ -17,6 +17,10 @@ const MangaSchema = new mongoose.Schema({
   
   // Logic fields for Red/Friendly mode
   isAdult: { type: Boolean, default: false }, 
+  isHero: { 
+  type: Boolean, 
+  default: false 
+},
   
   // Key aligned with Atlas DB
   TotalChapter: { type: Number, default: 0 }, 
@@ -67,5 +71,6 @@ contractOfferedAt: {
   collection: 'mangas',
   timestamps: false 
 });
+
 
 export default mongoose.model('manga', MangaSchema);

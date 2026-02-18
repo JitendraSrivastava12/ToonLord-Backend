@@ -10,7 +10,8 @@ import {
   adminDeleteManga,
   adminUpdateManga,
   adminGetAllMangas,requestPremium,acceptContract,
-  declineContract
+  declineContract,
+  getAllHeroMangas
 } from '../controller/mangas.js';
 import protect from '../middleware/authMiddleware.js';
 import { upload } from '../middleware/upload.js';
@@ -31,6 +32,7 @@ router.get('/adult', (req, res) => {
     req.query.type = 'adult';
     getMangas(req, res);
 });
+router.get('/hero-all', getAllHeroMangas);
 
 // --- 2. ADMIN ROUTES (Must come before /:id) ---
 // If /:id was above this, /admin/all would be treated as ID="admin"

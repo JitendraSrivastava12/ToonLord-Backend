@@ -345,3 +345,12 @@ export const declineContract = async (req, res) => {
     res.status(500).json({ message: "Error during decline protocol." });
   }
 };
+export const getAllHeroMangas = async (req, res) => {
+  try {
+    // Fetch all curated hero content from the 'mangas' collection
+    const heroMangas = await Manga.find({ isHero: true }); 
+    res.status(200).json(heroMangas);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching hero mangas", error: error.message });
+  }
+};
