@@ -228,3 +228,29 @@ export const getAllLogs = async (req, res) => {
     res.status(500).json({ message: "Failed to retrieve logs from archive." });
   }
 };
+import GlobalSetting from "../model/GlobalStorage.js";
+
+// GET the current status for the NavBar
+export const getRedModeStatus = async (req, res) => {
+  try {
+    const setting = await GlobalSetting.findOne({ key: 'red_mode_disabled' });
+    res.status(200).json({ isDisabled: setting ? setting.value : false });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching setting" });
+  }
+};
+
+// PATCH the status from the Admin Panel
+export const updateRedModeStatus = async (req, res) => {
+  try {
+    const { isDisabled } = req.body;
+    const updatedSetting = await GlobalSetting.findOneAndUpdate(
+      { key: 'red_mode_disabled' },
+      { value: isDisabled },
+      { upsert: true, new: true }
+    );
+    res.status(200).json(updatedSetting);
+  } catch (error) {
+    res.status(500).json({ message: "Error updating setting" });
+  }
+};
