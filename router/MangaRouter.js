@@ -16,6 +16,7 @@ import {
 import protect from '../middleware/authMiddleware.js';
 import { upload } from '../middleware/upload.js';
 import admin from '../middleware/adminMiddleware.js';
+import { getPersonalizedForYou, getRelatedManga } from '../controller/Recommendation.js';
 
 const router = express.Router();
 
@@ -33,7 +34,10 @@ router.get('/adult', (req, res) => {
     getMangas(req, res);
 });
 router.get('/hero-all', getAllHeroMangas);
+router.get('/related/:id', getRelatedManga);
 
+// Get personalized list for homepage
+router.get('/for-you', getPersonalizedForYou);
 // --- 2. ADMIN ROUTES (Must come before /:id) ---
 // If /:id was above this, /admin/all would be treated as ID="admin"
 router.get('/admin/all', protect,admin ,adminGetAllMangas);
@@ -53,5 +57,5 @@ router.post('/request-premium/:id', protect, requestPremium);
 // 2. Creator accepts the Admin's offer
 router.post('/accept-contract/:id', protect, acceptContract);
 router.post('/decline-contract/:id', protect, declineContract);
-
+ 
 export default router;

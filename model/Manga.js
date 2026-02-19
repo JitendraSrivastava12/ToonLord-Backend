@@ -71,6 +71,14 @@ contractOfferedAt: {
   collection: 'mangas',
   timestamps: false 
 });
-
+MangaSchema.index({ 
+  title: "text", 
+  description: "text" 
+}, {
+  weights: {
+    title: 5,       // Title matches are more important
+    description: 1  // Description matches are secondary
+  }
+});
 
 export default mongoose.model('manga', MangaSchema);
