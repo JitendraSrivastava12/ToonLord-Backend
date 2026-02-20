@@ -9,13 +9,14 @@ import {
 import protect from '../middleware/authMiddleware.js';
 import { uploadMemory } from '../middleware/upload.js';
 import {optionalAuth} from '../middleware/optionalAuth.js'
+import { banCheck } from '../middleware/banningMiddleware.js';
 const router = express.Router();
 
 /**
  * 1. UPLOAD ROUTE (Protected)
  * Uses .array() because chapters have multiple pages
  */
-router.post('/upload', protect, uploadMemory.array('pages', 100), uploadChapter);
+router.post('/upload', protect, uploadMemory.array('pages', 100),banCheck, uploadChapter);
 
 /**
  * 2. LIST ROUTE
@@ -41,6 +42,6 @@ router.delete('/:mangaId/:chapterId', protect, deleteChapter);
  * 5. EDIT ROUTE (Protected)
  * Edits chapter details (title, chapterNumber)
  */
-router.patch('/:chapterId', protect, editChapter);
+router.patch('/:chapterId', protect,banCheck, editChapter);
 
 export default router;

@@ -936,7 +936,7 @@ export const getMyFollowers = async (req, res) => {
   try {
     // Look up current user and populate the 'followers' array with specific fields
     const user = await User.findById(req.user.id)
-      .populate("followers", "username profilePicture role bio")
+      .populate("followers", "username profilePicture role bio vipStatus")
       .select("followers");
 
     if (!user)

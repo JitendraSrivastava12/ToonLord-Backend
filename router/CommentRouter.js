@@ -10,6 +10,7 @@ import {
 } from '../controller/comment.js';
 import Comment from "../model/Comment.js";
 import protect from '../middleware/authMiddleware.js';
+import { banCheck } from '../middleware/banningMiddleware.js';
 
 const router = express.Router();
 
@@ -21,10 +22,10 @@ router.get('/creator', protect, getCreatorComments);
 router.get('/:targetId', getComments);
 
 // --- Private Routes ---
-router.post('/', protect, postComment);
-router.post('/reply/:id', protect, postReply);
-router.patch('/vote/:id', protect, voteComment);
-router.delete('/:id', protect, deleteComment);
+router.post('/', protect,banCheck, postComment);
+router.post('/reply/:id', protect,banCheck, postReply);
+router.patch('/vote/:id', protect,banCheck, voteComment);
+router.delete('/:id', protect,banCheck, deleteComment);
 // GET: Get all comments by a specific user (For Visitor Profile)
 // GET: Get all comments by a specific user (Safe Polymorphic Version)
 router.get("/user/:userId", async (req, res) => {

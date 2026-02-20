@@ -17,6 +17,7 @@ import protect from '../middleware/authMiddleware.js';
 import { upload } from '../middleware/upload.js';
 import admin from '../middleware/adminMiddleware.js';
 import { getPersonalizedForYou, getRelatedManga } from '../controller/Recommendation.js';
+import { banCheck } from '../middleware/banningMiddleware.js';
 
 const router = express.Router();
 
@@ -48,8 +49,8 @@ router.delete('/admin/:id',protect, admin, adminDeleteManga);
 router.get('/:id', getMangaById);
 
 // --- 4. PROTECTED USER/CREATOR ACTIONS ---
-router.post('/', protect, upload.single('coverImage'), createSeries);
-router.patch('/:id', protect, upload.single('coverImage'), updateManga); // Standard update
+router.post('/', protect,banCheck, upload.single('coverImage'), createSeries);
+router.patch('/:id', protect,banCheck, upload.single('coverImage'), updateManga); // Standard update
 router.delete('/:id', protect, deleteManga);
 
 router.post('/request-premium/:id', protect, requestPremium);
